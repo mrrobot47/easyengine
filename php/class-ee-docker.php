@@ -39,7 +39,7 @@ class EE_DOCKER {
 		// PHP configuration.
 		$php['service_name'] = array( 'name' => 'php' );
 		$php['image']        = array( 'name' => 'easyengine/php' );
-		if(in_array( 'mysql3', $filters )){
+		if(in_array( 'local', $filters )){
 			$php['depends_on']   = array( 'name' => 'db' );
 		}
 		$php['restart']      = $restart_default;
@@ -47,6 +47,7 @@ class EE_DOCKER {
 		$php['environment']  = array(
 			'env' => array(
 				array( 'name' => 'WORDPRESS_DB_HOST' ),
+				array( 'name' => 'WORDPRESS_DB_NAME=${MYSQL_DATABASE}'),
 				array( 'name' => 'WORDPRESS_DB_USER=${MYSQL_USER}' ),
 				array( 'name' => 'WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}' ),
 				array( 'name' => 'USER_ID=${USER_ID}' ),
@@ -92,7 +93,7 @@ class EE_DOCKER {
 		$base[] = $nginx;
 		$base[] = $mail;
 		$base[] = $phpmyadmin;
-		if(in_array( 'mysql3', $filters )){
+		if(in_array( 'local', $filters )){
 			$base[] = $db;
 		}
 
