@@ -39,7 +39,9 @@ class EE_DOCKER {
 		// PHP configuration.
 		$php['service_name'] = array( 'name' => 'php' );
 		$php['image']        = array( 'name' => 'easyengine/php' );
-		$php['depends_on']   = array( 'name' => 'db' );
+		if(in_array( 'mysql3', $filters )){
+			$php['depends_on']   = array( 'name' => 'db' );
+		}
 		$php['restart']      = $restart_default;
 		$php['volumes']      = array( array( 'vol' => array( array( 'name' => './app/src:/var/www/html' ), array( 'name' => './config/php-fpm/php.ini:/usr/local/etc/php/php.ini' ) ) ) );
 		$php['environment']  = array(
@@ -86,11 +88,13 @@ class EE_DOCKER {
 		$mail['environment']  = array( 'env' => array( array( 'name' => 'VIRTUAL_HOST=mail.${VIRTUAL_HOST}' ), array( 'name' => 'VIRTUAL_PORT=8025' ) ) );
 		$mail['networks']     = $network_default;
 
-		$base[] = $db;
 		$base[] = $php;
 		$base[] = $nginx;
 		$base[] = $mail;
 		$base[] = $phpmyadmin;
+		if(in_array( 'mysql3', $filters )){
+			$base[] = $db;
+		}
 
 		$binding = array(
 			'services' => $base,
@@ -174,6 +178,9 @@ class EE_DOCKER {
 
 			case 'ee4_redis':
 				$command = "docker run --name ee4_redis -d --restart=always easyengine/redis";
+				break;
+			case 'db':
+				$command = "docker run -d --name=db -e  MYSQL_ROOT_PASSWORD=root -e  MYSQL_DATABASE=db -e  MYSQL_USER=wordpress -e  MYSQL_PASSWORD=password -v $HOME/.ee4/app/db:/var/lib/mysql easyengine/mariadb";
 				break;
 		}
 
