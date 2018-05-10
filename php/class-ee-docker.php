@@ -181,7 +181,7 @@ class EE_DOCKER {
 				$command = "docker run --name ee4_redis -d --restart=always easyengine/redis";
 				break;
 			case 'db':
-				$command = "docker run -d --name=db -e  MYSQL_ROOT_PASSWORD=root -e  MYSQL_DATABASE=db -e  MYSQL_USER=wordpress -e  MYSQL_PASSWORD=password -v $HOME/.ee4/app/db:/var/lib/mysql easyengine/mariadb";
+				$command = "docker run -d --restart=always --name=db -e  MYSQL_ROOT_PASSWORD=root -e  MYSQL_DATABASE=db -e  MYSQL_USER=wordpress -e  MYSQL_PASSWORD=password -v $HOME/.ee4/app/db:/var/lib/mysql easyengine/mariadb";
 				break;
 		}
 
