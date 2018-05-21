@@ -86,11 +86,23 @@ class EE_DOCKER {
 		$mail['environment']  = array( 'env' => array( array( 'name' => 'VIRTUAL_HOST=mail.${VIRTUAL_HOST}' ), array( 'name' => 'VIRTUAL_PORT=8025' ) ) );
 		$mail['networks']     = $network_default;
 
+
+		if ( in_array( 'batcache', $filters ) ) {
+			$memcached['service_name'] = array( 'name' => 'memcached' );
+			$memcached['image']        = array( 'name' => 'memcached' );
+			$memcached['restart']      = $restart_default;
+			$memcached['networks']     = $network_default;
+		}
+
 		$base[] = $db;
 		$base[] = $php;
 		$base[] = $nginx;
 		$base[] = $mail;
 		$base[] = $phpmyadmin;
+
+		if ( in_array( 'batcache', $filters ) ) {
+			$base[] = $memcached;
+		}
 
 		$binding = array(
 			'services' => $base,
