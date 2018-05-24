@@ -56,7 +56,11 @@ class EEStackStatusController(CementBaseController):
                     Log.info(self, "PHP7.0-FPM is not installed")
 
         if self.app.pargs.php7:
-            if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if (
+  EEVariables.ee_platform_codename == 'trusty'
+  or EEVariables.ee_platform_codename == 'xenial'
+  or EEVariables.ee_platform_codename == 'bionic'
+):
                 if EEAptGet.is_installed(self, 'php7.0-fpm'):
                     services = services + ['php7.0-fpm']
                 else:
@@ -147,7 +151,11 @@ class EEStackStatusController(CementBaseController):
                     Log.info(self, "PHP7.0-FPM is not installed")
 
         if self.app.pargs.php7:
-            if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if (
+  EEVariables.ee_platform_codename == 'trusty'
+  or EEVariables.ee_platform_codename == 'xenial'
+  or EEVariables.ee_platform_codename == 'bionic'
+):
                 if EEAptGet.is_installed(self, 'php7.0-fpm'):
                     services = services + ['php7.0-fpm']
                 else:
@@ -238,7 +246,11 @@ class EEStackStatusController(CementBaseController):
                     Log.info(self, "PHP7.0-FPM is not installed")
 
         if self.app.pargs.php7:
-            if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if (
+  EEVariables.ee_platform_codename == 'trusty'
+  or EEVariables.ee_platform_codename == 'xenial'
+  or EEVariables.ee_platform_codename == 'bionic'
+):
                 if EEAptGet.is_installed(self, 'php7.0-fpm'):
                     services = services + ['php7.0-fpm']
                 else:
@@ -331,7 +343,11 @@ class EEStackStatusController(CementBaseController):
                     Log.info(self, "PHP7.0-FPM is not installed")
 
         if self.app.pargs.php7:
-            if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if (
+  EEVariables.ee_platform_codename == 'trusty'
+  or EEVariables.ee_platform_codename == 'xenial'
+  or EEVariables.ee_platform_codename == 'bionic'
+):
                 if EEAptGet.is_installed(self, 'php7.0-fpm'):
                     services = services + ['php7.0-fpm']
                 else:
@@ -422,7 +438,11 @@ class EEStackStatusController(CementBaseController):
                     Log.info(self, "PHP7.0-FPM is not installed")
 
         if self.app.pargs.php7:
-            if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial'):
+            if (
+  EEVariables.ee_platform_codename == 'trusty'
+  or EEVariables.ee_platform_codename == 'xenial'
+  or EEVariables.ee_platform_codename == 'bionic'
+):
                 if EEAptGet.is_installed(self, 'php7.0-fpm'):
                     services = services + ['php7.0-fpm']
                 else:
