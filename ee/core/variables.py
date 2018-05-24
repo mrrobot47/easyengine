@@ -95,7 +95,7 @@ class EEVariables():
                          "/rtCamp:/EasyEngine/xUbuntu_16.04/ /")
     elif ee_platform_codename == 'bionic':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/xUbuntu_18.04/ /")
+                         "/mbtamuli:/EE-Test/xUbuntu_18.04/ /")
     elif ee_platform_codename == 'wheezy':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
                          "/rtCamp:/EasyEngine/Debian_7.0/ /")
