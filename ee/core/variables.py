@@ -93,6 +93,9 @@ class EEVariables():
     elif ee_platform_codename == 'xenial':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
                          "/rtCamp:/EasyEngine/xUbuntu_16.04/ /")
+    elif ee_platform_codename == 'bionic':
+        ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
+                         "/rtCamp:/EasyEngine/xUbuntu_18.04/ /")
     elif ee_platform_codename == 'wheezy':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
                          "/rtCamp:/EasyEngine/Debian_7.0/ /")
@@ -113,7 +116,7 @@ class EEVariables():
                     "php5-mcrypt", "php5-common", "php5-readline",
                      "php5-mysql", "php5-cli", "php5-memcache", "php5-imagick",
                      "memcached", "graphviz", "php-pear"]
-        elif (ee_platform_codename == 'trusty' or ee_platform_codename == 'xenial'):
+        elif (ee_platform_codename == 'trusty' or ee_platform_codename == 'xenial' or ee_platform_codename == 'bionic'):
             ee_php_repo = "ppa:ondrej/php"
             ee_php5_6 = ["php5.6-fpm", "php5.6-curl", "php5.6-gd", "php5.6-imap",
                         "php5.6-mcrypt", "php5.6-readline", "php5.6-common", "php5.6-recode",
@@ -211,7 +214,7 @@ class EEVariables():
         ee_redis_repo = ("deb http://packages.dotdeb.org {codename} all"
                         .format(codename=ee_platform_codename))
 
-    if (ee_platform_codename == 'trusty' or ee_platform_codename == 'xenial'):
+    if (ee_platform_codename == 'trusty' or ee_platform_codename == 'xenial' or ee_platform_codename == 'bionic'):
         ee_redis = ['redis-server', 'php-redis']
     else:
         ee_redis = ['redis-server', 'php5-redis']
