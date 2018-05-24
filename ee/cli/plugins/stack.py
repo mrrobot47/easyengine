@@ -179,6 +179,10 @@ class EEStackController(CementBaseController):
 
         if set(EEVariables.ee_nginx).issubset(set(apt_packages)):
             Log.info(self, "Adding repository for NGINX, please wait...")
+            nginx_pref = ("Package: *\nPin: origin download.opensuse.org"
+                      "\nPin-Priority: 1000\n") with open('/etc/apt/preferences.d/'
+                  'Nginx.pref', 'w') as nginx_pref_file:
+            nginx_pref_file.write(nginx_pref)
             EERepo.add(self, repo_url=EEVariables.ee_nginx_repo)
             Log.debug(self, 'Adding ppa of Nginx')
             EERepo.add_key(self, EEVariables.ee_nginx_key)
