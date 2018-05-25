@@ -12,13 +12,12 @@ class EEVariables():
     """Intialization of core variables"""
 
     # EasyEngine version
-    ee_version = "3.7.5"
+    ee_version = "3.7.6"
     # EasyEngine packages versions
-    ee_wp_cli = "1.4.1"
-    ee_adminer = "4.2.5"
-    ee_roundcube = "1.1.4"
-   # ee_vimbadmin = "3.0.12"
-    ee_vimbadmin = "master"
+    ee_wp_cli = "1.5.0"
+    ee_adminer = "4.6.2"
+    ee_roundcube = "1.3.6"
+    ee_vimbadmin = "3.0.15"
 
     # Get WPCLI path
     ee_wpcli_path = os.popen('which wp | tr "\n" " "').read()
@@ -86,22 +85,25 @@ class EEVariables():
     # Nginx repo and packages
     if ee_platform_codename == 'precise':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/xUbuntu_12.04/ /")
+                         "/rtCamp:/EasyEngine-Testing/xUbuntu_12.04/ /")
     elif ee_platform_codename == 'trusty':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/xUbuntu_14.04/ /")
+                         "/rtCamp:/EasyEngine-Testing/xUbuntu_14.04/ /")
     elif ee_platform_codename == 'xenial':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/xUbuntu_16.04/ /")
+                         "/rtCamp:/EasyEngine-Testing/xUbuntu_16.04/ /")
     elif ee_platform_codename == 'bionic':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
                          "/mbtamuli:/EE-Test/xUbuntu_18.04/ /")
     elif ee_platform_codename == 'wheezy':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/Debian_7.0/ /")
+                         "/rtCamp:/EasyEngine-Testing/Debian_7.0/ /")
     elif ee_platform_codename == 'jessie':
         ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
-                         "/rtCamp:/EasyEngine/Debian_8.0/ /")
+                         "/rtCamp:/EasyEngine-Testing/Debian_8.0/ /")
+    elif ee_platform_codename == 'stretch':
+        ee_nginx_repo = ("deb http://download.opensuse.org/repositories/home:"
+                         "/rtCamp:/EasyEngine-Testing/Debian_8.0/ /")
 
 
 

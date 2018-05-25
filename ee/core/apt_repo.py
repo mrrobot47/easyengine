@@ -1,5 +1,5 @@
 """EasyEngine packages repository operations"""
-from ee.core.shellexec import EEShellExec
+from ee.core.shellexec import EEShellExec,CommandExecutionError
 from ee.core.variables import EEVariables
 from ee.core.logging import Log
 import os
@@ -79,13 +79,14 @@ class EERepo():
     def add_key(self, keyids, keyserver=None):
         """
         This function adds imports repository keys from keyserver.
-        default keyserver is hkp://keys.gnupg.net
+        default keyserver is keyserver.ubuntu.com
         user can provide other keyserver with keyserver="hkp://xyz"
         """
-        EEShellExec.cmd_exec(self, "gpg --keyserver {serv}"
-                             .format(serv=(keyserver or
-                                           "hkp://keys.gnupg.net"))
-                             + " --recv-keys {key}".format(key=keyids))
-        EEShellExec.cmd_exec(self, "gpg -a --export --armor {0}"
-                             .format(keyids)
-                             + " | apt-key add - ")
+        try:
+            EEShellExec.cmd_exec(self, "apt-key adv --keyserver {server}"
+                              " --recv {key}").format(
+                              server=(
+                              keyserver or "keyserver.ubuntu.com"),
+                              key=keyids)
+        except CommandExecutionError as e:
+            raise

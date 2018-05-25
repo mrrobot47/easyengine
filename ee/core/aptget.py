@@ -32,11 +32,16 @@ class EEAptGet():
                     Log.info(self, "Fixing missing GPG keys, please wait...")
                     error_list = str(error_output).split("\\n")
 
+                    added_keys = []
+
                     # Use a loop to add misising keys
                     for single_error in error_list:
                         if "NO_PUBKEY" in single_error:
                             key = single_error.rsplit(None, 1)[-1]
-                            EERepo.add_key(self, key, keyserver="hkp://pgp.mit.edu")
+                            try:
+                                EERepo.add_key(self, key, keyserver="keyserver.ubuntu.com")
+                            except CommandExecutionError as e:
+                                Log.error(self, "Could not retrieve GPG Keys.")
 
                     proc = subprocess.Popen('apt-get update',
                                             shell=True,
@@ -228,4 +233,3 @@ class EEAptGet():
         except Exception as e:
             Log.error(self, "Error while downloading packages, "
                       "apt-get exited with error")
-

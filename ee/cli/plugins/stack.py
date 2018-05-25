@@ -120,15 +120,12 @@ class EEStackController(CementBaseController):
             with open('/etc/apt/preferences.d/'
                       'MariaDB.pref', 'w') as mysql_pref_file:
                 mysql_pref_file.write(mysql_pref)
-        #    if EEVariables.ee_platform_codename != 'jessie':
             EERepo.add(self, repo_url=EEVariables.ee_mysql_repo)
             Log.debug(self, 'Adding key for {0}'
                         .format(EEVariables.ee_mysql_repo))
-            if (EEVariables.ee_platform_codename != 'xenial' or EEVariables.ee_platform_codename != 'bionic'):
-                EERepo.add_key(self, '0xcbcb082a1bb943db',
-                                   keyserver="keyserver.ubuntu.com")
-            else:
-                EERepo.add_key(self, '0xF1656F24C74CD1D8',
+            EERepo.add_key(self, '0xcbcb082a1bb943db',
+                               keyserver="keyserver.ubuntu.com")
+            EERepo.add_key(self, '0xF1656F24C74CD1D8',
                                    keyserver="keyserver.ubuntu.com")
             chars = ''.join(random.sample(string.ascii_letters, 8))
             Log.debug(self, "Pre-seeding MySQL")
@@ -176,15 +173,16 @@ class EEStackController(CementBaseController):
             Log.debug(self, 'Setting my.cnf permission')
             EEFileUtils.chmod(self, "/etc/mysql/conf.d/my.cnf", 0o600)
 
-
         if set(EEVariables.ee_nginx).issubset(set(apt_packages)):
-            Log.info(self, "Adding repository for Nginx, please wait...")
             nginx_pref = ("Package: *\nPin: origin download.opensuse.org"
                           "\nPin-Priority: 1000\n")
             with open('/etc/apt/preferences.d/'
                       'Nginx.pref', 'w') as nginx_pref_file:
                 nginx_pref_file.write(nginx_pref)
-            EERepo.add(self, repo_url=EEVariables.ee_nginx_key)
+            Log.info(self, "Adding repository for NGINX, please wait...")
+            EERepo.add(self, repo_url=EEVariables.ee_nginx_repo)
+            Log.debug(self, 'Adding ppa of Nginx')
+            EERepo.add_key(self, EEVariables.ee_nginx_key)
 
         if (EEVariables.ee_platform_codename == 'trusty' or EEVariables.ee_platform_codename == 'xenial' or EEVariables.ee_platform_codename == 'bionic'):
             if set(EEVariables.ee_php7_0).issubset(set(apt_packages)) \
@@ -882,24 +880,6 @@ class EEStackController(CementBaseController):
                               "/etc/php5/fpm/php.ini")
                     config.write(configfile)
 
-                '''
-                #Code depreciated. Mustache version applied
-                # Parse /etc/php5/fpm/php-fpm.conf
-                config = configparser.ConfigParser()
-                Log.debug(self, "configuring php file"
-                          "/etc/php5/fpm/php-fpm.conf")
-                config.read_file(codecs.open("/etc/php5/fpm/php-fpm.conf",
-                                             "r", "utf8"))
-                config['global']['error_log'] = '/var/log/php5/fpm.log'
-                config.remove_option('global', 'include')
-                config['global']['log_level'] = 'notice'
-                config['global']['include'] = '/etc/php5/fpm/pool.d/*.conf'
-                with codecs.open('/etc/php5/fpm/php-fpm.conf',
-                                 encoding='utf-8', mode='w') as configfile:
-                    Log.debug(self, "writting php5 configuration into "
-                              "/etc/php5/fpm/php-fpm.conf")
-                    config.write(configfile)
-                '''
                 #configure /etc/php5/fpm/php-fpm.conf
                 data = dict(pid="/run/php5-fpm.pid", error_log="/var/log/php5/fpm.log",
                               include="/etc/php5/fpm/pool.d/*.conf")
@@ -1023,24 +1003,6 @@ class EEStackController(CementBaseController):
                     config.write(configfile)
 
                 # Parse /etc/php/5.6/fpm/php-fpm.conf
-                '''
-                #Depreciated code. Mustache version Applied.
-
-                config = configparser.ConfigParser()
-                Log.debug(self, "configuring php file "
-                          "/etc/php/5.6/fpm/php-fpm.conf")
-                config.read_file(codecs.open("/etc/php/5.6/fpm/php-fpm.conf",
-                                             "r", "utf8"))
-                config['global']['error_log'] = '/var/log/php/5.6/fpm.log'
-                config.remove_option('global', 'include')
-                config['global']['log_level'] = 'notice'
-                config['global']['include'] = '/etc/php/5.6/fpm/pool.d/*.conf'
-                with codecs.open('/etc/php/5.6/fpm/php-fpm.conf',
-                                 encoding='utf-8', mode='w') as configfile:
-                    Log.debug(self, "writting php5 configuration into "
-                              "/etc/php/5.6/fpm/php-fpm.conf")
-                    config.write(configfile)
-                '''
                 data = dict(pid="/run/php/php5.6-fpm.pid", error_log="/var/log/php/5.6/fpm.log",
                               include="/etc/php/5.6/fpm/pool.d/*.conf")
                 Log.debug(self, "writting php5 configuration into "
@@ -2206,20 +2168,6 @@ class EEStackController(CementBaseController):
                                os.popen("hostname -f | tr -d '\n'").read())
                     Log.debug(self, "Setting apt_packages variable for mail")
                     apt_packages = apt_packages + EEVariables.ee_mail
-
-                    #Backup before changing repo to private
-    #                packages = packages + [["https://github.com/opensolutions/"
-    #                                        "ViMbAdmin/archive/{0}.tar.gz"
-    #                                        .format(EEVariables.ee_vimbadmin),
-    #                                        "/tmp/vimbadmin.tar.gz",
-    #                                        "ViMbAdmin"],
-    #                                       ["https://github.com/roundcube/"
-    #                                        "roundcubemail/releases/download/"
-    #                                        "{0}/roundcubemail-{0}.tar.gz"
-    #                                         .format(EEVariables.ee_roundcube),
-    #                                         "/tmp/roundcube.tar.gz",
-    #                                         "Roundcube"]]
-
 
     #   https://github.com/EasyEngine/ViMbAdmin/archive/3.0.13.tar.gz
                     packages = packages + [["https://github.com/EasyEngine/"
