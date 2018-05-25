@@ -84,9 +84,9 @@ class EERepo():
         """
         try:
             EEShellExec.cmd_exec(self, "apt-key adv --keyserver {server}"
-                              " --recv {key}").format(
+                              " --recv {key}".format(
                               server=(
                               keyserver or "keyserver.ubuntu.com"),
-                              key=keyids)
+                              key=keyids))
         except CommandExecutionError as e:
             raise
