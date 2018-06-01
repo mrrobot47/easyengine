@@ -527,8 +527,13 @@ class Runner {
             if ( isset( $assoc_args['help'] ) && ! in_array( 'wp', $args ) ) {
                 array_unshift( $args, 'help' );
                 unset( $assoc_args['help'] );
+			}
+			
+            if ( isset( $assoc_args['version'] ) ) {
+				array_unshift( $args, 'version' );
+				array_unshift( $args, 'cli' );
+                unset( $assoc_args['version'] );
             }
-
 			
 			// wp-command compatibility:
 			if ( isset( $assoc_args['admin_user'] ) ) {
