@@ -1534,27 +1534,17 @@ function get_sitename() {
 }
 
 function set_site_arg( $args, $command ){
-
-	if ( empty ( $args ) ) {
-		$site_name = get_sitename();
-		if ( $site_name ){
-			$args[0] = $site_name;
-		}else{
-			EE::error( "Could not find the site you wish to enable.\nEither pass it as an argument: `ee $command` \nor run `ee $command <site-name>` from inside the site folder." );
-		}
-	}else if ( 'wp' === $command ){
-		if(isset($args[0])){
-			if(!EE::db()::site_in_db($args[0])){
-				$site_name = get_sitename();
-				if ( $site_name ){
-					array_unshift($args,$site_name);
-				}else{
-					EE::error( "Could not find the site you wish to run wp command on.\nEither pass it as an argument: `ee $command <site-name>` \nor run `ee $command` from inside the site folder." );
-				}
-			}
+	if(isset($args[0])){
+		if(EE::db()::site_in_db($args[0])){
+			return $args;
 		}
 	}
-	
+	$site_name = get_sitename();
+	if ( $site_name ){
+		array_unshift($args,$site_name);
+	}else{
+		EE::error( "Could not find the site you wish to run wp command on.\nEither pass it as an argument: `ee $command <site-name>` \nor run `ee $command` from inside the site folder." );
+	}
 	return $args;
 }
 
