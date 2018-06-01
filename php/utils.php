@@ -1513,18 +1513,18 @@ function format_table( $items ) {
  */
 function get_sitename() {
 	$sites = EE::db()::select( array( 'sitename' ) );
-
+	
 	if ( $sites ) {
 		$cwd          = getcwd();
 		$name_in_path = explode( '/', $cwd );
 		$site_name    = array_intersect( array_flatten( $sites ), $name_in_path );
-
+		
 		if ( 1 === count( $site_name ) ) {
-			$path = EE::db()::select( array( 'site_path' ), array( 'sitename' => $site_name['sitename'] ) );
+			$path = EE::db()::select( array( 'site_path' ), array( 'sitename' => $site_name[0] ) );
 			if ( $path ) {
 				$site_path = $path[0]['site_path'];
 				if ( $site_path === substr( $cwd, 0, strlen( $site_path ) ) ) {
-					return $site_name['sitename'];
+					return $site_name[0];
 				}
 			}
 		}
@@ -1533,19 +1533,34 @@ function get_sitename() {
 	return false;
 }
 
+function set_site_arg( $args, $command ){
 
-function array_flatten( $array ) {
-	if ( ! is_array( $array ) ) {
-		return false;
-	}
-	$result = array();
-	foreach ( $array as $key => $value ) {
-		if ( is_array( $value ) ) {
-			$result = array_merge( $result, array_flatten( $value ) );
-		} else {
-			$result[$key] = $value;
+	if ( empty ( $args ) ) {
+		$site_name = get_sitename();
+		if ( $site_name ){
+			$args[0] = $site_name;
+		}else{
+			EE::error( "Could not find the site you wish to enable.\nEither pass it as an argument: `ee $command` \nor run `ee $command <site-name>` from inside the site folder." );
+		}
+	}else if ( 'wp' === $command ){
+		if(isset($args[0])){
+			if(!EE::db()::site_in_db($args[0])){
+				$site_name = get_sitename();
+				if ( $site_name ){
+					array_unshift($args,$site_name);
+				}else{
+					EE::error( "Could not find the site you wish to run wp command on.\nEither pass it as an argument: `ee $command <site-name>` \nor run `ee $command` from inside the site folder." );
+				}
+			}
 		}
 	}
+	
+	return $args;
+}
 
-	return $result;
+
+function array_flatten(array $array) {
+    $return = array();
+    array_walk_recursive($array, function($a) use (&$return) { $return[] = $a; });
+    return $return;
 }
