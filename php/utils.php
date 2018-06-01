@@ -1505,3 +1505,47 @@ function format_table( $items ) {
 	}
 	\EE::log( $delem );
 }
+
+/**
+ * Get the site-name from the path from where ee is running if it is a valid site path.
+ *
+ * @return bool|String Name of the site or false in failure.
+ */
+function get_sitename() {
+	$sites = EE::db()::select( array( 'sitename' ) );
+
+	if ( $sites ) {
+		$cwd          = getcwd();
+		$name_in_path = explode( '/', $cwd );
+		$site_name    = array_intersect( array_flatten( $sites ), $name_in_path );
+
+		if ( 1 === count( $site_name ) ) {
+			$path = EE::db()::select( array( 'site_path' ), array( 'sitename' => $site_name['sitename'] ) );
+			if ( $path ) {
+				$site_path = $path[0]['site_path'];
+				if ( $site_path === substr( $cwd, 0, strlen( $site_path ) ) ) {
+					return $site_name['sitename'];
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+
+function array_flatten( $array ) {
+	if ( ! is_array( $array ) ) {
+		return false;
+	}
+	$result = array();
+	foreach ( $array as $key => $value ) {
+		if ( is_array( $value ) ) {
+			$result = array_merge( $result, array_flatten( $value ) );
+		} else {
+			$result[$key] = $value;
+		}
+	}
+
+	return $result;
+}

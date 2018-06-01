@@ -59,7 +59,8 @@ class Runner {
 			mkdir( $this->config['sites_path'] );
 		}
 		define( 'WEBROOT', \EE\Utils\trailingslashit( $this->config['sites_path'] ) );
-		define( 'DB', $this->config['db_path'] );
+		define( 'LOCALE', $this->config['locale'] );
+		define( 'DB', \EE\Utils\get_home_dir(). '/.ee4/ee4.db' );
 		define( 'LOCALHOST_IP', '127.0.0.1' );
 		define( 'TABLE', 'sites' );
 	}
@@ -528,6 +529,36 @@ class Runner {
                 unset( $assoc_args['help'] );
             }
 
+			
+			// wp-command compatibility:
+			if ( isset( $assoc_args['admin_user'] ) ) {
+				$assoc_args['user'] = $assoc_args['admin_user'];
+				unset( $assoc_args['admin_user'] );
+			}
+			if ( isset( $assoc_args['admin_password'] ) ) {
+				$assoc_args['pass'] = $assoc_args['admin_password'];
+				unset( $assoc_args['admin_password'] );
+			}
+			if ( isset( $assoc_args['admin_email'] ) ) {
+				$assoc_args['email'] = $assoc_args['admin_email'];
+				unset( $assoc_args['admin_email'] );
+			}
+
+			// backward compatibility message
+			$unsupported_create_old_args = array(
+				'w3tc',
+				'wpsc',
+				'wpfc',
+				'pagespeed',
+			);
+
+			$old_arg = array_intersect( $unsupported_create_old_args, array_keys( $assoc_args ) );
+
+			$old_args = implode(' --',$old_arg);
+			if ( isset($args[1]) && 'create' === $args[1] && ! empty ($old_arg) ) {
+				\EE::error( "Sorry, --$old_args flag/s is/are no longer supported in EE v4.\nPlease run `ee help " . implode( ' ', $args ) . '`.' );
+			}
+
 			list( $this->arguments, $this->assoc_args ) = [ $args, $assoc_args ];
 
 			$configurator->merge_array( $this->runtime_config );
@@ -663,7 +694,7 @@ class Runner {
 	public function start() {
 
 		$this->ensure_present_in_config( 'sites_path', Utils\get_home_dir(). '/ee4-sites' );
-		$this->ensure_present_in_config( 'db_path', Utils\get_home_dir(). '/.ee4/ee4.db' );
+		$this->ensure_present_in_config( 'locale', 'en_US' );
 		$this->ensure_present_in_config( 'ee_installer_version', 'stable' );
 		$this->init_ee4();
 
