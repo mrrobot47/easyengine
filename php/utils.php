@@ -1543,7 +1543,7 @@ function set_site_arg( $args, $command ){
 	if ( $site_name ){
 		array_unshift($args,$site_name);
 	}else{
-		EE::error( "Could not find the site you wish to run wp command on.\nEither pass it as an argument: `ee $command <site-name>` \nor run `ee $command` from inside the site folder." );
+		EE::error( "Could not find the site you wish to run $command command on.\nEither pass it as an argument: `ee $command <site-name>` \nor run `ee $command` from inside the site folder." );
 	}
 	return $args;
 }
