@@ -1543,6 +1543,8 @@ function get_site_name() {
  */
 function set_site_arg( $args, $command ) {
 	if ( isset( $args[0] ) ) {
+		var_dump ($args[0]);
+		var_dump(EE::db()::site_in_db( $args[0] ));
 		if ( EE::db()::site_in_db( $args[0] ) ) {
 			return $args;
 		}
