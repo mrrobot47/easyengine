@@ -183,10 +183,15 @@ class Runner {
 	 * Given positional arguments, find the command to execute.
 	 *
 	 * @param array $args
+	 *
 	 * @return array|string Command, args, and path on success; error message on failure
 	 */
-	public function find_command_to_run( $args ) {
-		$command = \EE::get_root_command();
+	public function find_command_to_run( $args, $type = false ) {
+		if ( $type ) {
+			$command = \EE::get_site_types();
+		} else {
+			$command = \EE::get_root_command();
+		}
 
 		EE::do_hook( 'find_command_to_run_pre' );
 
@@ -203,6 +208,17 @@ class Runner {
 					$child = array_pop( $cmd_path );
 					$parent_name = implode( ' ', $cmd_path );
 					$suggestion = $this->get_subcommand_suggestion( $child, $command );
+
+					if ( $type ) {
+						return sprintf(
+							"'%s' is not a registered subcommand of 'ee site --type=%s'. See 'ee help site --type=%s' for available subcommands.%s",
+							$child,
+							$parent_name,
+							$parent_name,
+							! empty( $suggestion ) ? PHP_EOL . "Did you mean '{$suggestion}'?" : ''
+						);
+					}
+
 					return sprintf(
 						"'%s' is not a registered subcommand of '%s'. See 'ee help %s' for available subcommands.%s",
 						$child,
@@ -693,6 +709,7 @@ class Runner {
 
 		$this->init_ee();
 
+		return;
 		// Run routing only for `site` command.
 		if ( ! isset( $this->arguments[0] ) || 'site' !== $this->arguments[0] ) {
 			return;
@@ -894,16 +911,17 @@ class Runner {
 	 * Get a suggestion on similar (sub)commands when the user entered an
 	 * unknown (sub)command.
 	 *
-	 * @param string           $entry        User entry that didn't match an
+	 * @param string $entry                  User entry that didn't match an
 	 *                                       existing command.
 	 * @param CompositeCommand $root_command Root command to start search for
 	 *                                       suggestions at.
 	 *
 	 * @return string Suggestion that fits the user entry, or an empty string.
 	 */
-	private function get_subcommand_suggestion( $entry, CompositeCommand $root_command = null ) {
+	public function get_subcommand_suggestion( $entry, CompositeCommand $root_command = null ) {
 		$commands = array();
 		$this->enumerate_commands( $root_command ?: \EE::get_root_command(), $commands );
+		$this->enumerate_commands( $root_command ?: \EE::get_site_types(), $commands );
 
 		return Utils\get_suggestion( $entry, $commands, $threshold = 2 );
 	}
