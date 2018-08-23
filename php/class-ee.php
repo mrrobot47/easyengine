@@ -76,6 +76,16 @@ class EE {
 		return $root;
 	}
 
+	public static function get_site_types() {
+		static $site_types;
+
+		if ( ! $site_types ) {
+			$site_types = new Dispatcher\TypeCommand;
+		}
+
+		return $site_types;
+	}
+
 	public static function get_runner() {
 		static $runner;
 
@@ -235,55 +245,28 @@ class EE {
 	}
 
 	/**
-	 * Register a command to EE.
+	 * Register a command/type to EE.
 	 *
-	 * EE supports using any callable class, function, or closure as a
-	 * command. `EE::add_command()` is used for both internal and
-	 * third-party command registration.
-	 *
-	 * Command arguments are parsed from PHPDoc by default, but also can be
-	 * supplied as an optional third argument during registration.
-	 *
-	 * ```
-	 * # Register a custom 'foo' command to output a supplied positional param.
-	 * #
-	 * # $ ee foo bar --append=qux
-	 * # Success: bar qux
-	 *
-	 * /**
-	 *  * My awesome closure command
-	 *  *
-	 *  * <message>
-	 *  * : An awesome message to display
-	 *  *
-	 *  * --append=<message>
-	 *  * : An awesome message to append to the original message.
-	 *  *\/
-	 * $foo = function( $args, $assoc_args ) {
-	 *     EE::success( $args[0] . ' ' . $assoc_args['append'] );
-	 * };
-	 * EE::add_command( 'foo', $foo );
-	 * ```
-	 *
-	 * @access public
+	 * @access   public
 	 * @category Registration
 	 *
-	 * @param string   $name Name for the command (e.g. "post list" or "site empty").
-	 * @param callable $callable Command implementation as a class, function or closure.
-	 * @param array    $args {
-	 *    Optional. An associative array with additional registration parameters.
+	 * @param string $name           Name for the command (e.g. "post list" or "site empty").
+	 * @param callable $callable     Command implementation as a class, function or closure.
+	 * @param array $args            {
+	 *                               Optional. An associative array with additional registration parameters.
+	 * @param bool $type             If it is command or a type.
 	 *
-	 *    @type callable $before_invoke Callback to execute before invoking the command.
-	 *    @type callable $after_invoke  Callback to execute after invoking the command.
-	 *    @type string   $shortdesc     Short description (80 char or less) for the command.
-	 *    @type string   $longdesc      Description of arbitrary length for examples, etc.
-	 *    @type string   $synopsis      The synopsis for the command (string or array).
-	 *    @type string   $when          Execute callback on a named EE hook.
-	 *    @type bool     $is_deferred   Whether the command addition had already been deferred.
+	 * @type callable $before_invoke Callback to execute before invoking the command.
+	 * @type callable $after_invoke  Callback to execute after invoking the command.
+	 * @type string $shortdesc       Short description (80 char or less) for the command.
+	 * @type string $longdesc        Description of arbitrary length for examples, etc.
+	 * @type string $synopsis        The synopsis for the command (string or array).
+	 * @type string $when            Execute callback on a named EE hook.
+	 * @type bool $is_deferred       Whether the command addition had already been deferred.
 	 * }
 	 * @return true True on success, false if deferred, hard error if registration failed.
 	 */
-	public static function add_command( $name, $callable, $args = array() ) {
+	private function command_type_registration( $name, $callable, $args = array(), $type = false ) {
 		// Bail immediately if the EE executable has not been run.
 		if ( ! defined( 'EE' ) ) {
 			return false;
@@ -300,7 +283,7 @@ class EE {
 		if ( ! $valid ) {
 			if ( is_array( $callable ) ) {
 				$callable[0] = is_object( $callable[0] ) ? get_class( $callable[0] ) : $callable[0];
-				$callable = array( $callable[0], $callable[1] );
+				$callable    = array( $callable[0], $callable[1] );
 			}
 			EE::error( sprintf( 'Callable %s does not exist, and cannot be registered as `ee %s`.', json_encode( $callable ), $name ) );
 		}
@@ -310,6 +293,7 @@ class EE {
 
 		if ( $addition->was_aborted() ) {
 			EE::warning( "Aborting the addition of the command '{$name}' with reason: {$addition->get_reason()}." );
+
 			return false;
 		}
 
@@ -324,12 +308,16 @@ class EE {
 		$leaf_name = array_pop( $path );
 		$full_path = $path;
 
-		$command = self::get_root_command();
+		if ( $type ) {
+			$command = self::get_site_types();
+		} else {
+			$command = self::get_root_command();
+		}
 
 		while ( ! empty( $path ) ) {
 			$subcommand_name = $path[0];
-			$parent = implode( ' ', $path );
-			$subcommand = $command->find_subcommand( $path );
+			$parent          = implode( ' ', $path );
+			$subcommand      = $command->find_subcommand( $path );
 
 			// Parent not found. Defer addition or create an empty container as
 			// needed.
@@ -366,7 +354,7 @@ class EE {
 			throw new Exception(
 				sprintf(
 					"'%s' can't have subcommands.",
-					implode( ' ' , Dispatcher\get_path( $command ) )
+					implode( ' ', Dispatcher\get_path( $command ) )
 				)
 			);
 		}
@@ -386,7 +374,7 @@ class EE {
 				$synopsis = \EE\SynopsisParser::render( $args['synopsis'] );
 				$leaf_command->set_synopsis( $synopsis );
 				$long_desc = '';
-				$bits = explode( ' ', $synopsis );
+				$bits      = explode( ' ', $synopsis );
 				foreach ( $args['synopsis'] as $key => $arg ) {
 					$long_desc .= $bits[ $key ] . "\n";
 					if ( ! empty( $arg['description'] ) ) {
@@ -422,7 +410,87 @@ class EE {
 		$command->add_subcommand( $leaf_name, $leaf_command );
 
 		self::do_hook( "after_add_command:{$name}" );
+
 		return true;
+	}
+
+	/**
+	 * Register a command to EE.
+	 *
+	 * EE supports using any callable class, function, or closure as a
+	 * command. `EE::add_command()` is used for both internal and
+	 * third-party command registration.
+	 *
+	 * Command arguments are parsed from PHPDoc by default, but also can be
+	 * supplied as an optional third argument during registration.
+	 *
+	 * ```
+	 * # Register a custom 'foo' command to output a supplied positional param.
+	 * #
+	 * # $ ee foo bar --append=qux
+	 * # Success: bar qux
+	 *
+	 * /**
+	 *  * My awesome closure command
+	 *  *
+	 *  * <message>
+	 *  * : An awesome message to display
+	 *  *
+	 *  * --append=<message>
+	 *  * : An awesome message to append to the original message.
+	 *  *\/
+	 * $foo = function( $args, $assoc_args ) {
+	 *     EE::success( $args[0] . ' ' . $assoc_args['append'] );
+	 * };
+	 * EE::add_command( 'foo', $foo );
+	 * ```
+	 *
+	 * @access   public
+	 * @category Registration
+	 *
+	 * @param string $name           Name for the command (e.g. "post list" or "site empty").
+	 * @param callable $callable     Command implementation as a class, function or closure.
+	 * @param array $args            {
+	 *                               Optional. An associative array with additional registration parameters.
+	 *
+	 * @type callable $before_invoke Callback to execute before invoking the command.
+	 * @type callable $after_invoke  Callback to execute after invoking the command.
+	 * @type string $shortdesc       Short description (80 char or less) for the command.
+	 * @type string $longdesc        Description of arbitrary length for examples, etc.
+	 * @type string $synopsis        The synopsis for the command (string or array).
+	 * @type string $when            Execute callback on a named EE hook.
+	 * @type bool $is_deferred       Whether the command addition had already been deferred.
+	 * }
+	 * @return true True on success, false if deferred, hard error if registration failed.
+	 */
+	public static function add_command( $name, $callable, $args = array() ) {
+		self::command_type_registration( $name, $callable, $args );
+	}
+
+	/**
+	 * Register site --type in EE.
+	 *
+	 *
+	 * @access   public
+	 * @category Registration
+	 *
+	 * @param string $name           Name for the command (e.g. "post list" or "site empty").
+	 * @param callable $callable     Command implementation as a class, function or closure.
+	 * @param array $args            {
+	 *                               Optional. An associative array with additional registration parameters.
+	 *
+	 * @type callable $before_invoke Callback to execute before invoking the type.
+	 * @type callable $after_invoke  Callback to execute after invoking the type.
+	 * @type string $shortdesc       Short description (80 char or less) for the type.
+	 * @type string $longdesc        Description of arbitrary length for examples, etc.
+	 * @type string $synopsis        The synopsis for the type (string or array).
+	 * @type string $when            Execute callback on a named EE hook.
+	 * @type bool $is_deferred       Whether the type addition had already been deferred.
+	 * }
+	 * @return true True on success, false if deferred, hard error if registration failed.
+	 */
+	public static function add_site_type( $name, $callable, $args = array() ) {
+		self::command_type_registration( $name, $callable, $args, true );
 	}
 
 	/**
