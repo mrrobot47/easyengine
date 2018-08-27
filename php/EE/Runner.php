@@ -282,6 +282,10 @@ class Runner {
 		}
 	}
 
+	public function get_args() {
+		return [ $this->arguments, $this->assoc_args ];
+	}
+
 	/**
 	 * Show synopsis if the called command is a composite command
 	 */
