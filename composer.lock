@@ -645,12 +645,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/mrrobot47/site-command.git",
-                "reference": "0178748a9c1f3da705bc36e516961ba58de3e653"
+                "reference": "5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mrrobot47/site-command/zipball/0178748a9c1f3da705bc36e516961ba58de3e653",
-                "reference": "0178748a9c1f3da705bc36e516961ba58de3e653",
+                "url": "https://api.github.com/repos/mrrobot47/site-command/zipball/5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4",
+                "reference": "5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4",
                 "shasum": ""
             },
             "require": {
@@ -684,7 +684,7 @@
             "support": {
                 "source": "https://github.com/mrrobot47/site-command/tree/refactor-for-type"
             },
-            "time": "2018-08-28T14:55:59+00:00"
+            "time": "2018-08-28T16:26:01+00:00"
         },
         {
             "name": "easyengine/site-wp-command",
