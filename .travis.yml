@@ -18,13 +18,7 @@ before_install:
     fi
 
 install:
-  - |
-    # Run composer install for master else update.
-    if [[ "$TRAVIS_BRANCH" = "master-v4" ]]; then
-      composer install --no-interaction
-    else
-      composer update
-    fi
+  - composer install --no-interaction
   - sudo ./ci/test-env-install.sh
 
 before_script:
