@@ -645,12 +645,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/mrrobot47/site-command.git",
-                "reference": "5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4"
+                "reference": "000c41336b60884ff71156923e29705be99e2f38"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mrrobot47/site-command/zipball/5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4",
-                "reference": "5df0eafcc1afbc1cf3feb2c9f2dd480f002fc9e4",
+                "url": "https://api.github.com/repos/mrrobot47/site-command/zipball/000c41336b60884ff71156923e29705be99e2f38",
+                "reference": "000c41336b60884ff71156923e29705be99e2f38",
                 "shasum": ""
             },
             "require": {
@@ -684,7 +684,7 @@
             "support": {
                 "source": "https://github.com/mrrobot47/site-command/tree/refactor-for-type"
             },
-            "time": "2018-08-28T16:26:01+00:00"
+            "time": "2018-08-28T18:04:06+00:00"
         },
         {
             "name": "easyengine/site-wp-command",
@@ -692,12 +692,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/mrrobot47/site-wp-command.git",
-                "reference": "4e29d6793531a4a553da1380cda97a5f98d8cf5c"
+                "reference": "4ef2e3d692211c5e286a8aea3b1bc3b6def8ac8f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mrrobot47/site-wp-command/zipball/4e29d6793531a4a553da1380cda97a5f98d8cf5c",
-                "reference": "4e29d6793531a4a553da1380cda97a5f98d8cf5c",
+                "url": "https://api.github.com/repos/mrrobot47/site-wp-command/zipball/4ef2e3d692211c5e286a8aea3b1bc3b6def8ac8f",
+                "reference": "4ef2e3d692211c5e286a8aea3b1bc3b6def8ac8f",
                 "shasum": ""
             },
             "require-dev": {
@@ -726,7 +726,7 @@
             "support": {
                 "source": "https://github.com/mrrobot47/site-wp-command/tree/refactor-for-type"
             },
-            "time": "2018-08-28T15:04:01+00:00"
+            "time": "2018-08-28T18:12:09+00:00"
         },
         {
             "name": "guzzlehttp/guzzle",
