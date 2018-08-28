@@ -16,11 +16,6 @@ before_install:
     else
       echo "xdebug.ini does not exist"
     fi
-  - |
-    # Update commands in composer.json to develop if branch is not master.
-    if [[ "$TRAVIS_BRANCH" != "master-v4" ]]; then
-      sed -i 's/\(easyengine\/.*\):\ \".*\"/\1:\ \"dev-develop\"/' composer.json
-    fi
 
 install:
   - |

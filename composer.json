@@ -31,8 +31,8 @@
         "easyengine/auth-command": "dev-develop",
         "easyengine/cron-command": "v1.0.0-beta.2",
         "easyengine/mailhog-command": "dev-develop",
-        "easyengine/site-command": "v2.0.0",
-        "easyengine/site-wp-command": "v1.0.0-beta.1",
+        "easyengine/site-command": "dev-refactor-for-type",
+        "easyengine/site-wp-command": "dev-refactor-for-type",
         "easyengine/shell-command": "v1.0.0-beta.1",
         "justinrainbow/json-schema": "~5.2.5",
         "monolog/monolog": "^1.23",
@@ -51,6 +51,16 @@
         "wp-cli/autoload-splitter": "^0.1.5",
         "wp-cli/mustangostang-spyc": "^0.6.3",
         "wp-cli/php-cli-tools": "~0.11.2"
+    },
+    "repositories": {
+        "mrrobot47/site-command": {
+            "type": "vcs",
+            "url": "https://github.com/mrrobot47/site-command.git"
+        },
+        "mrrobot47/site-wp-command": {
+            "type": "vcs",
+            "url": "https://github.com/mrrobot47/site-wp-command.git"
+        }
     },
     "require-dev": {
         "behat/behat": "3.4.*",
