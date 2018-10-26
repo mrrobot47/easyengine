@@ -275,4 +275,20 @@ class EE_DOCKER {
 
 		return array_filter( explode( PHP_EOL, trim( $launch->stdout ) ), 'trim' );
 	}
+
+	/**
+	 * Function to get service container id from site-name and it's required service name.
+	 *
+	 * @param string $site_url Name of the site.
+	 * @param string $service  Name of the service whose container is needed.
+	 *
+	 * @return string Found container id.
+	 */
+	public static function get_container_id( $site_url, $service ) {
+
+		// This command will return container id based on labels passed.
+		$launch = EE::launch( sprintf( 'docker ps -f "label=io.easyengine.site=%s" -f "label=org.label-schema.name=%s" -q', $site_url, $service ) );
+
+		return trim( $launch->stdout );
+	}
 }
