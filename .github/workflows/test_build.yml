@@ -27,6 +27,11 @@ jobs:
     - name: Test Env Install
       run: sudo apt update && sudo bash $GITHUB_WORKSPACE/ci/test-env-install.sh
 
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.3'
+
     - name: Prepare
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
