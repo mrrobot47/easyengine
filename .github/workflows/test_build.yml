@@ -61,7 +61,7 @@ jobs:
     - name: Test
       run: |
         cd $GITHUB_WORKSPACE
-        sudo ./vendor/bin/behat
+        ./vendor/bin/behat
         ./ci/test-commands.sh
 
     - name: Output logs

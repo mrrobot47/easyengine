@@ -18,5 +18,5 @@ for command in "${sub_commands[@]}"; do
 	composer du
 	echo "Running tests for $command"
 	export COMPOSE_INTERACTIVE_NO_CLI=1
-	sudo ./vendor/bin/behat
+	./vendor/bin/behat
 done
