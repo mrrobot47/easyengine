@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 function setup_test_requirements() {
+    mkdir -p /opt/easyengine/logs/
     readonly LOG_FILE="/opt/easyengine/logs/install.log"
     # Adding software-properties-common for add-apt-repository.
     apt-get install -y software-properties-common
@@ -7,7 +8,7 @@ function setup_test_requirements() {
     add-apt-repository -y ppa:ondrej/php
     apt-get update
     # Installing php-cli, which is the minimum requirement to run EasyEngine
-    apt-get -y install php7.2-cli
+    apt-get -y install php7.3-cli
 
     php_modules=( pcntl curl sqlite3 )
     if command -v php > /dev/null 2>&1; then
