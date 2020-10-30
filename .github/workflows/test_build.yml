@@ -25,15 +25,15 @@ jobs:
         fi
 
     - name: Test Env Install
-      run: sudo apt update && sudo ./$GITHUB_WORKSPACE/ci/test-env-install.sh
+      run: sudo apt update && sudo bash $GITHUB_WORKSPACE/ci/test-env-install.sh
 
     - name: Prepare
-      run: ./$GITHUB_WORKSPACE/ci/prepare.sh
+      run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
     - name: Test
       run: |
-        sudo ./$GITHUB_WORKSPACE/vendor/bin/behat
-        ./$GITHUB_WORKSPACE/ci/test-commands.sh
+        sudo bash $GITHUB_WORKSPACE/vendor/bin/behat
+        bash $GITHUB_WORKSPACE/ci/test-commands.sh
 
     - name: Output logs
       if: ${{ always() }}
