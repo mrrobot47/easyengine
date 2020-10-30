@@ -30,6 +30,13 @@ jobs:
     - name: Prepare
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
+    - name: Add debug information
+      run: |
+        php --version
+        php -m
+        composer --version
+        docker --version
+
     - name: Test
       run: |
         cd $GITHUB_WORKSPACE
