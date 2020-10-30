@@ -1,5 +1,7 @@
 #!/bin/bash
-# called by Travis CI
+# called by GitHub actions
+
+cd $GITHUB_WORKSPACE
 
 #repos=$(find vendor/easyengine -type d -name 'features')
 sub_commands=(
