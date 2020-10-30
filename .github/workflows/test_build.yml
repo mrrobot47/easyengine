@@ -13,6 +13,34 @@ jobs:
     - name: Install docker-compose
       run: sudo curl -L https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
 
+    - name: Get Composer cache directory
+      id: composer-cache
+      run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+
+    - name: Set up Composer caching
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-composer-dependencies
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.3'
+        coverage: none
+        tools: composer
+
+    - name: Log debug information
+      run: |
+        php --version
+        php -m
+        composer --version
+        docker --version
+
     - name: Composer changes and install
       run: |
         cd "$GITHUB_WORKSPACE"
@@ -27,20 +55,8 @@ jobs:
     - name: Test Env Install
       run: sudo apt update && sudo bash $GITHUB_WORKSPACE/ci/test-env-install.sh
 
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '7.3'
-
     - name: Prepare
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
-
-    - name: Add debug information
-      run: |
-        php --version
-        php -m
-        composer --version
-        docker --version
 
     - name: Test
       run: |
@@ -51,5 +67,5 @@ jobs:
     - name: Output logs
       if: ${{ always() }}
       run: |
-        cat /opt/easyengine/logs/install.log
-        cat /opt/easyengine/logs/ee.log
+        [[ -f "/opt/easyengine/logs/install.log" ]] && cat /opt/easyengine/logs/install.log
+        [[ -f "/opt/easyengine/logs/ee.log" ]] && cat /opt/easyengine/logs/ee.log
