@@ -2,11 +2,6 @@
 
 # called by Travis CI
 
-if [[ "false" != "$TRAVIS_PULL_REQUEST" ]]; then
-	echo "Not deploying pull requests."
-	exit
-fi
-
 if [ -z $DEPLOY_BRANCH ]; then
 	echo "Skipping deployment as DEPLOY_BRANCH is not set"
 	exit
