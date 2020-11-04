@@ -26,9 +26,9 @@ install:
   - |
     # Run composer install for master else update.
     if [[ "$TRAVIS_BRANCH" = "master" ]]; then
-      composer install --prefer-dist --no-suggest --no-progress --no-interaction
+      composer install --prefer-dist --no-progress --no-interaction
     else
-      composer update --prefer-dist --no-suggest --no-progress --no-interaction
+      composer update --prefer-dist --no-progress --no-interaction
     fi
   - sudo ./ci/test-env-install.sh
 
@@ -37,7 +37,7 @@ before_script:
 
 script:
   - sudo ./vendor/bin/behat
-  - ./ci/test-commands.sh
+  - #./ci/test-commands.sh
 
 after_script:
   - cat /opt/easyengine/logs/install.log

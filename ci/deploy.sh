@@ -32,13 +32,13 @@ echo "|1|qPmmP7LVZ7Qbpk7AylmkfR0FApQ=|WUy1WS3F4qcr3R5Sc728778goPw= ssh-rsa AAAAB
 
 # Remove dev dependenices needed for testing
 if [[ "$TRAVIS_BRANCH" = "master" ]]; then
-	composer install --prefer-dist --no-suggest --no-progress --no-interaction --no-dev
+	composer install --prefer-dist --no-progress --no-interaction --no-dev
 else
-	composer update --prefer-dist --no-suggest --no-progress --no-interaction --no-dev
+	composer update --prefer-dist --no-progress --no-interaction --no-dev
 fi
 
 # Re create phar
-bash "$TRAVIS_BUILD_DIR/ci/prepare.sh"
+php -dphar.readonly=0 ./utils/make-phar.php easyengine.phar --quiet
 
 git clone git@github.com:easyengine/easyengine-builds.git
 
