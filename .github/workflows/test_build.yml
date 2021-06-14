@@ -57,13 +57,14 @@ jobs:
             composer update --prefer-dist --no-progress --no-interaction
         fi
 
-    - name: Prepare
-      run: bash $GITHUB_WORKSPACE/ci/prepare.sh
+    # - name: Prepare
+    #   run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
     - name: Test
       run: |
         cd $GITHUB_WORKSPACE
-        sudo ./vendor/bin/behat
+        sudo su
+        ./vendor/bin/behat
         sub_commands=(
           vendor/easyengine/site-command/features
           vendor/easyengine/site-type-php/features
@@ -75,8 +76,8 @@ jobs:
           rsync -av --delete $command/ features/ > /dev/null
           for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
           echo "Running tests for $command"
-          # export COMPOSE_INTERACTIVE_NO_CLI=1
-          sudo -E ./vendor/bin/behat
+          export COMPOSE_INTERACTIVE_NO_CLI=1
+          ./vendor/bin/behat
         done
       env:
         COMPOSE_INTERACTIVE_NO_CLI: 1
