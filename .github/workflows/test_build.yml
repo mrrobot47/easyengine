@@ -10,9 +10,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Install docker-compose
-      run: sudo curl -L https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
-
     - name: Get Composer cache directory
       id: composer-cache
       run: echo "::set-output name=dir::$(composer config cache-files-dir)"
@@ -33,32 +30,31 @@ jobs:
         php-version: '7.3'
         coverage: none
         tools: composer
+        extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
 
     - name: Update docker
       run: |
         apt purge nginx nginx-common
-        curl -fsSL https://get.docker.com/ | bash
+        curl -fsSL https://get.docker.com/ | sudo bash
 
-    - name: Log debug information
+    - name: Install docker-compose
       run: |
-        php --version
-        php -m
-        composer --version
-        docker --version
+        VERSION=$(curl --silent "https://api.github.com/repos/docker/compose/releases/latest" |
+          grep '"tag_name":' |
+          sed -E 's/.*"([^"]+)".*/\1/'
+        )
+        sudo curl -L https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
 
     - name: Composer changes and install
       run: |
         cd "$GITHUB_WORKSPACE"
         # Run composer install for master else update.
         if [[ "$GITHUB_REF" = "heads/ref/master" ]]; then
-            composer install --no-interaction
+            composer install --prefer-dist --no-progress --no-interaction
         else
             sed -i 's/\(easyengine\/.*\):\ \".*\"/\1:\ \"dev-develop\"/' composer.json
-            composer update
+            composer update --prefer-dist --no-progress --no-interaction
         fi
-
-    - name: Test Env Install
-      run: sudo apt update && sudo bash $GITHUB_WORKSPACE/ci/test-env-install.sh
 
     - name: Prepare
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
