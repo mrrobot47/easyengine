@@ -19,5 +19,5 @@ for command in "${sub_commands[@]}"; do
 	for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
 	echo "Running tests for $command"
 	export COMPOSE_INTERACTIVE_NO_CLI=1
-	./vendor/bin/behat
+	sudo ./vendor/bin/behat
 done

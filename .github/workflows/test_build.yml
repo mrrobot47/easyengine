@@ -63,7 +63,7 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE
         sudo ./vendor/bin/behat
-        sudo ./ci/test-commands.sh
+        ./ci/test-commands.sh
 
     - name: Output logs
       if: ${{ always() }}
