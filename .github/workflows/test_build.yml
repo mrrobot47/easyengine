@@ -61,7 +61,8 @@ jobs:
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
     - name: Test
-      run: cd $GITHUB_WORKSPACE
+      run: |
+        cd $GITHUB_WORKSPACE
         sudo -E echo "COMPOSE_INTERACTIVE_NO_CLI: $COMPOSE_INTERACTIVE_NO_CLI"
         sudo -E ./vendor/bin/behat
         sub_commands=(
