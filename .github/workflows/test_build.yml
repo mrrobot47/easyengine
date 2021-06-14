@@ -61,6 +61,7 @@ jobs:
       run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
     - name: Test
+      shell: 'script -q -e -c "bash {0}"'
       run: |
         cd $GITHUB_WORKSPACE
         sudo -E echo "COMPOSE_INTERACTIVE_NO_CLI: $COMPOSE_INTERACTIVE_NO_CLI"
@@ -77,7 +78,7 @@ jobs:
           for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
           echo "Running tests for $command"
           # sudo -E script --return --quiet -c "./vendor/bin/behat" /dev/null
-          tmux new-session -s my_session "sudo -E ./vendor/bin/behat"
+          sudo -E ./vendor/bin/behat
         done
       env:
         COMPOSE_INTERACTIVE_NO_CLI: 1
