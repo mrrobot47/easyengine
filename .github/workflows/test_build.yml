@@ -34,6 +34,11 @@ jobs:
         coverage: none
         tools: composer
 
+    - name: Update docker
+      run: |
+        apt purge nginx nginx-common
+        curl -fsSL https://get.docker.com/ | bash
+
     - name: Log debug information
       run: |
         php --version
