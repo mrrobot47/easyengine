@@ -34,7 +34,7 @@ jobs:
 
     - name: Update docker
       run: |
-        apt purge nginx nginx-common
+        sudo apt purge nginx nginx-common
         curl -fsSL https://get.docker.com/ | sudo bash
 
     - name: Install docker-compose
