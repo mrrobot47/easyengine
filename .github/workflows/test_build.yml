@@ -79,7 +79,7 @@ jobs:
           sudo -E ./vendor/bin/behat
         done
       env:
-        COMPOSE_INTERACTIVE_NO_CLI=1
+        COMPOSE_INTERACTIVE_NO_CLI: 1
 
     - name: Output logs
       if: ${{ always() }}
