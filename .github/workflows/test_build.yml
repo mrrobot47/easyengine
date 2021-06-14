@@ -34,7 +34,7 @@ jobs:
 
     - name: Update docker
       run: |
-        sudo apt purge nginx nginx-common
+        sudo apt purge nginx nginx-common docker docker-engine docker.io docker-ce containerd runc
         curl -fsSL https://get.docker.com/ | sudo bash
         sudo systemctl restart docker.service
 
