@@ -63,8 +63,9 @@ jobs:
     - name: Test
       run: |
         cd $GITHUB_WORKSPACE
-        sudo su
-        ./vendor/bin/behat
+        export COMPOSE_INTERACTIVE_NO_CLI=1
+        sudo -E echo "COMPOSE_INTERACTIVE_NO_CLI: $COMPOSE_INTERACTIVE_NO_CLI"
+        sudo -E ./vendor/bin/behat
         sub_commands=(
           vendor/easyengine/site-command/features
           vendor/easyengine/site-type-php/features
@@ -76,8 +77,7 @@ jobs:
           rsync -av --delete $command/ features/ > /dev/null
           for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
           echo "Running tests for $command"
-          export COMPOSE_INTERACTIVE_NO_CLI=1
-          ./vendor/bin/behat
+          sudo -E script --return --quiet -c "./vendor/bin/behat" /dev/null
         done
       env:
         COMPOSE_INTERACTIVE_NO_CLI: 1
