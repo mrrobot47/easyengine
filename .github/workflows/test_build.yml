@@ -57,8 +57,8 @@ jobs:
             composer update --prefer-dist --no-progress --no-interaction
         fi
 
-    # - name: Prepare
-    #   run: bash $GITHUB_WORKSPACE/ci/prepare.sh
+    - name: Prepare
+      run: bash $GITHUB_WORKSPACE/ci/prepare.sh
 
     - name: Test
       run: |
