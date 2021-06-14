@@ -10,7 +10,7 @@ function setup_test_requirements() {
     # Installing php-cli, which is the minimum requirement to run EasyEngine
     apt-get -y install php7.3-cli
 
-    php_modules=( pcntl curl sqlite3 )
+    php_modules=( pcntl curl sqlite3 zip dom mbstring json )
     if command -v php > /dev/null 2>&1; then
       # Reading the php version.
       default_php_version="$(readlink -f /usr/bin/php | gawk -F "php" '{ print $2}')"
