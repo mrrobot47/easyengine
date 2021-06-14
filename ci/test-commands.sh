@@ -18,5 +18,6 @@ for command in "${sub_commands[@]}"; do
 	rsync -av --delete $command/ features/ > /dev/null
 	for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
 	echo "Running tests for $command"
-	sudo export COMPOSE_INTERACTIVE_NO_CLI=1 && sudo ./vendor/bin/behat
+	export COMPOSE_INTERACTIVE_NO_CLI=1
+	sudo -E ./vendor/bin/behat
 done
