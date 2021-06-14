@@ -36,6 +36,7 @@ jobs:
       run: |
         sudo apt purge nginx nginx-common
         curl -fsSL https://get.docker.com/ | sudo bash
+        service docker restart
 
     - name: Install docker-compose
       run: |
