@@ -65,7 +65,7 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE
         sudo -E echo "COMPOSE_INTERACTIVE_NO_CLI: $COMPOSE_INTERACTIVE_NO_CLI"
-        sudo -E ./vendor/bin/behat
+        sudo ./vendor/bin/behat
         sub_commands=(
           vendor/easyengine/site-command/features
           vendor/easyengine/site-type-php/features
@@ -79,7 +79,7 @@ jobs:
           echo "Running tests for $command"
           sudo bash -c "echo 'alias docker-compose=\"docker-compose -T\"' >> ~/.bashrc"
           # sudo -E script --return --quiet -c "./vendor/bin/behat" /dev/null
-          sudo -E bash ./vendor/bin/behat
+          sudo ./vendor/bin/behat
         done
       env:
         COMPOSE_INTERACTIVE_NO_CLI: 1
