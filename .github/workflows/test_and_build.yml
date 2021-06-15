@@ -149,7 +149,7 @@ jobs:
       run: |
         set -e
         cd $GITHUB_WORKSPACE
-        sudo ./vendor/bin/behat
+        sudo -E ./vendor/bin/behat
         sub_commands=(
           vendor/easyengine/site-command/features
           vendor/easyengine/site-type-php/features
