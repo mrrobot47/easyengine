@@ -188,6 +188,10 @@ jobs:
         if: ${{ contains(github.ref, 'develop') }}
         run: |
           echo 'FILENAME=easyengine-nightly.phar' > $GITHUB_ENV
+      - name: Set file name
+        if: ${{ contains(github.ref, 'test') }}
+        run: |
+          echo 'FILENAME=easyengine-nightly.phar' > $GITHUB_ENV
       - name: Set file name for master branch
         if: ${{ contains(github.ref, 'master') }}
         run: |
