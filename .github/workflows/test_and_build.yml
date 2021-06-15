@@ -139,10 +139,10 @@ jobs:
             composer update --prefer-dist --no-progress --no-interaction
         fi
 
-      # - name: Download built Phar file
-      #   uses: actions/download-artifact@v2
-      #   with:
-      #     name: easyengine-phar
+    - name: Download built Phar file
+      uses: actions/download-artifact@v2
+      with:
+        name: easyengine-phar
 
     - name: Test
       shell: 'script -q -e -c "bash {0}"'
