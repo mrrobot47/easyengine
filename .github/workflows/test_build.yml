@@ -77,7 +77,6 @@ jobs:
           rsync -av --delete $command/ features/ > /dev/null
           for file in features/*.feature; do mv "$file" "${file%.feature}_${array[2]}.feature"; done
           echo "Running tests for $command"
-          sudo bash -c "echo 'alias docker-compose=\"docker-compose -T\"' >> ~/.bashrc"
           # sudo -E script --return --quiet -c "./vendor/bin/behat" /dev/null
           sudo ./vendor/bin/behat
         done
