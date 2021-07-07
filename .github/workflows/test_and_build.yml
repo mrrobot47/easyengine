@@ -86,7 +86,7 @@ jobs:
 
   test: #----------------------------------------------------------------------
     runs-on: macos-latest
-    needs: [build]
+    #needs: [build]
     name: Behat Tests - PHP ${{ matrix.php }}
     strategy:
       fail-fast: false
