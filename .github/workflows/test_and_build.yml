@@ -4,6 +4,7 @@ on:
     branches:
       - master
       - develop
+      - add/mac-tests
   schedule:
     - cron:  '30 3 * * *'
 
@@ -84,7 +85,7 @@ jobs:
           path: easyengine.phar
 
   test: #----------------------------------------------------------------------
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: [build]
     name: Behat Tests - PHP ${{ matrix.php }}
     strategy:
@@ -117,11 +118,13 @@ jobs:
         tools: composer
         extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
 
-    - name: Update docker
+    - name: Install docker # Taken from https://github.com/actions/virtual-environments/issues/1143#issuecomment-652264388
       run: |
-        sudo apt purge nginx nginx-common docker docker-engine docker.io docker-ce containerd runc
-        curl -fsSL https://get.docker.com/ | sudo bash
-        sudo systemctl restart docker.service
+        mkdir -p ~/.docker/machine/cache
+        curl -Lo ~/.docker/machine/cache/boot2docker.iso https://github.com/boot2docker/boot2docker/releases/download/v19.03.12/boot2docker.iso
+        brew install docker docker-machine
+        docker-machine create --driver virtualbox default
+        docker-machine env default
 
     - name: Install docker-compose
       run: |
@@ -147,6 +150,7 @@ jobs:
       run: |
         set -e
         cd $GITHUB_WORKSPACE
+        eval "$(docker-machine env default)"
         sudo -E ./vendor/bin/behat
         sub_commands=(
           vendor/easyengine/site-command/features
