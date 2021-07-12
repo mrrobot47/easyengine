@@ -118,13 +118,19 @@ jobs:
         tools: composer
         extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
 
-    - name: Install docker # Taken from https://github.com/actions/virtual-environments/issues/1143#issuecomment-652264388
-      run: |
-        mkdir -p ~/.docker/machine/cache
-        curl -Lo ~/.docker/machine/cache/boot2docker.iso https://github.com/boot2docker/boot2docker/releases/download/v19.03.12/boot2docker.iso
-        brew install docker docker-machine
-        docker-machine create --driver virtualbox default
-        docker-machine env default
+    - uses: docker-practice/actions-setup-docker@master
+    - run: |
+        set -x
+        docker version
+        docker run --rm hello-world
+
+    # - name: Install docker # Taken from https://github.com/actions/virtual-environments/issues/1143#issuecomment-652264388
+    #   run: |
+    #     mkdir -p ~/.docker/machine/cache
+    #     curl -Lo ~/.docker/machine/cache/boot2docker.iso https://github.com/boot2docker/boot2docker/releases/download/v19.03.12/boot2docker.iso
+    #     brew install docker docker-machine
+    #     docker-machine create --driver virtualbox default
+    #     docker-machine env default
 
     - name: Install docker-compose
       run: |
