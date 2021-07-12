@@ -176,7 +176,6 @@ jobs:
   deploy: #-----------------------------------------------------------------------
     name: Deploy Phar
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/master'
-    if: github.repository == 'easyengine/easyengine'
     runs-on: ubuntu-latest
     needs: [build, test]
 
@@ -221,6 +220,7 @@ jobs:
           git commit -m "phar build: $GITHUB_REPOSITORY@$GITHUB_SHA"
 
       - name: Push changes
+        if: github.repository == 'easyengine/easyengine'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.BOT_TOKEN }}
