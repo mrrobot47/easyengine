@@ -11,14 +11,14 @@ EasyEngine makes it greatly easy to manage nginx, a fast web-server software tha
 
 * Docker
 * Docker-Compose
-* PHP CLI (>=7.1)
+* PHP CLI (>=7.4)
 * PHP Modules - `curl`, `sqlite3`, `pcntl`
 
 ## Installing
 
 ### Linux
 
-For Linux, we have created an installer script that will install all the dependencies for you. We have tested this on Ubuntu 14.04, 16.04, 18.04, 20.04, 22.04 and Debian 8, Debian 10.
+For Linux, we have created an installer script that will install all the dependencies for you. We have tested this on Ubuntu 20.04, 22.04, 24.04 and Debian 11, 12.
 
 ```bash
 wget -qO ee https://rt.cx/ee4 && sudo bash ee
@@ -33,7 +33,7 @@ chmod +x /usr/local/bin/ee
 
 ### Tab completions
 
-EasyEngine also comes with a tab completion script for Bash and ZSH. Just download [ee-completion.bash](https://raw.githubusercontent.com/EasyEngine/easyengine/develop-v4/utils/ee-completion.bash) and source it from `~/.bash_profile`:
+EasyEngine also comes with a tab completion script for Bash and ZSH. Just download [ee-completion.bash](https://raw.githubusercontent.com/EasyEngine/easyengine/master/utils/ee-completion.bash) and source it from `~/.bash_profile`:
 
 ```bash
 source /FULL/PATH/TO/ee-completion.bash
@@ -80,7 +80,7 @@ ee shell example.com
 
 Want to know more? Checkout readme of these commands -
  * [site command](https://github.com/EasyEngine/site-command/)
- * [site-wp command](https://github.com/EasyEngine/site-wp-command/)
+ * [site-type-wp command](https://github.com/EasyEngine/site-type-wp/)
  * [cron command](https://github.com/EasyEngine/cron-command/)
  * [shell command](https://github.com/EasyEngine/shell-command/)
 
@@ -97,7 +97,15 @@ All top level commands(except `ee cli`) i.e. `ee site`, `ee shell` have their ow
 
 Currently, we have the following commands which are bundled by default in EasyEngine:
 
-* [site command](https://github.com/EasyEngine/site-command/)
+* [site command](https://github.com/EasyEngine/site-command/) (with [php](https://github.com/EasyEngine/site-type-php/) and [wp](https://github.com/EasyEngine/site-type-wp/) site types)
+* [admin-tools command](https://github.com/EasyEngine/admin-tools-command/)
+* [auth command](https://github.com/EasyEngine/auth-command/)
+* [config command](https://github.com/EasyEngine/config-command/)
+* [cron command](https://github.com/EasyEngine/cron-command/)
+* [dash command](https://github.com/EasyEngine/dash-command/)
+* [log command](https://github.com/EasyEngine/log-command/)
+* [mailhog command](https://github.com/EasyEngine/mailhog-command/)
+* [service command](https://github.com/EasyEngine/service-command/)
 * [shell command](https://github.com/EasyEngine/shell-command/)
 
 In future, the community will be able to make their own packages and commands!
