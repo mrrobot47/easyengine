@@ -20,7 +20,7 @@ class Utils {
 		try {
 			self::setup_logrotate_config();
 		} catch ( \Throwable $e ) {
-			\EE::warning( 'Unable to setup EasyEngine logrotate config: ' . $e->getMessage() );
+			\EE::warning( 'Unable to set up EasyEngine logrotate config: ' . $e->getMessage() );
 		}
 	}
 
