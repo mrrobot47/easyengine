@@ -140,24 +140,29 @@ class Utils {
 	 */
 	private static function validate_configs( array $files ) {
 
-		$command = 'logrotate -d ' . implode( ' ', array_map( 'escapeshellarg', $files ) ) . ' 2>&1';
-		$result  = \EE::launch( $command, false, true );
+		$is_valid = true;
 
-		if ( 0 === $result->return_code ) {
-			\EE::debug( 'EasyEngine logrotate configs validated.' );
-			return true;
+		foreach ( $files as $file ) {
+			$command = 'logrotate -d ' . escapeshellarg( $file ) . ' 2>&1';
+			$result  = \EE::launch( $command, false, true );
+
+			if ( 0 === $result->return_code ) {
+				\EE::debug( 'EasyEngine logrotate config validated: ' . $file );
+				continue;
+			}
+
+			$message = trim( $result->stdout );
+
+			if ( ! self::has_validation_error( $message ) ) {
+				\EE::debug( 'EasyEngine logrotate validation returned a non-zero exit code without errors for ' . $file . ( $message ? '. ' . $message : '' ) );
+				continue;
+			}
+
+			\EE::warning( 'Unable to validate EasyEngine logrotate config: ' . $file . ( $message ? '. ' . $message : '' ) );
+			$is_valid = false;
 		}
 
-		$message = trim( $result->stdout );
-
-		if ( ! self::has_validation_error( $message ) ) {
-			\EE::debug( 'EasyEngine logrotate validation returned a non-zero exit code without errors.' . ( $message ? ' ' . $message : '' ) );
-			return true;
-		}
-
-		\EE::warning( 'Unable to validate EasyEngine logrotate configs.' . ( $message ? ' ' . $message : '' ) );
-
-		return false;
+		return $is_valid;
 	}
 
 	/**
@@ -179,18 +184,23 @@ class Utils {
 	 */
 	private static function force_rotate_configs( array $files ) {
 
-		$command = 'logrotate -f ' . implode( ' ', array_map( 'escapeshellarg', $files ) ) . ' 2>&1';
-		$result  = \EE::launch( $command, false, true );
+		$is_rotated = true;
 
-		if ( 0 === $result->return_code ) {
-			\EE::debug( 'EasyEngine logs force rotated.' );
-			return true;
+		foreach ( $files as $file ) {
+			$command = 'logrotate -f ' . escapeshellarg( $file ) . ' 2>&1';
+			$result  = \EE::launch( $command, false, true );
+
+			if ( 0 === $result->return_code ) {
+				\EE::debug( 'EasyEngine logs force rotated: ' . $file );
+				continue;
+			}
+
+			$message = trim( $result->stdout );
+			\EE::warning( 'Unable to force rotate EasyEngine logs for config: ' . $file . ( $message ? '. ' . $message : '' ) );
+			$is_rotated = false;
 		}
 
-		$message = trim( $result->stdout );
-		\EE::warning( 'Unable to force rotate EasyEngine logs.' . ( $message ? ' ' . $message : '' ) );
-
-		return false;
+		return $is_rotated;
 	}
 
 	/**
