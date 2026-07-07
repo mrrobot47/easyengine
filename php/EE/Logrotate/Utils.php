@@ -8,6 +8,7 @@ namespace EE\Logrotate;
 class Utils {
 
 	const CONFIG_DIR = '/etc/logrotate.d';
+	const EE_LOG_CONFIG_FILE = '/etc/logrotate.d/ee_cli';
 	const SITES_CONFIG_FILE = '/etc/logrotate.d/ee_sites';
 	const NGINX_PROXY_CONFIG_FILE = '/etc/logrotate.d/ee_nginx_proxy';
 
@@ -42,10 +43,11 @@ class Utils {
 			return;
 		}
 
-		$sites_written = self::write_config( self::SITES_CONFIG_FILE, self::get_sites_config() );
-		$proxy_written = self::write_config( self::NGINX_PROXY_CONFIG_FILE, self::get_nginx_proxy_config() );
+		$ee_log_written = self::write_config( self::EE_LOG_CONFIG_FILE, self::get_ee_log_config() );
+		$sites_written  = self::write_config( self::SITES_CONFIG_FILE, self::get_sites_config() );
+		$proxy_written  = self::write_config( self::NGINX_PROXY_CONFIG_FILE, self::get_nginx_proxy_config() );
 
-		if ( $sites_written && $proxy_written ) {
+		if ( $ee_log_written && $sites_written && $proxy_written ) {
 			self::cleanup_legacy_configs();
 		}
 	}
@@ -128,7 +130,7 @@ class Utils {
 		foreach ( $files as $file ) {
 			$basename = basename( $file );
 
-			if ( in_array( $basename, [ 'ee_sites', 'ee_nginx_proxy' ], true ) || ! is_file( $file ) ) {
+			if ( in_array( $basename, [ 'ee_cli', 'ee_sites', 'ee_nginx_proxy' ], true ) || ! is_file( $file ) ) {
 				continue;
 			}
 
@@ -227,6 +229,30 @@ class Utils {
 		}
 
 		return $roots;
+	}
+
+	/**
+	 * Return the EasyEngine CLI logs config.
+	 *
+	 * @return string
+	 */
+	private static function get_ee_log_config() {
+
+		$root_dir = rtrim( EE_ROOT_DIR, '/' );
+
+		return <<<LOGROTATE
+{$root_dir}/logs/*.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+    sharedscripts
+}
+LOGROTATE
+		. PHP_EOL;
 	}
 
 	/**
