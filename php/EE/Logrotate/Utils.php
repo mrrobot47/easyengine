@@ -152,28 +152,11 @@ class Utils {
 			}
 
 			$message = trim( $result->stdout );
-
-			if ( ! self::has_validation_error( $message ) ) {
-				\EE::debug( 'EasyEngine logrotate validation returned a non-zero exit code without errors for ' . $file . ( $message ? '. ' . $message : '' ) );
-				continue;
-			}
-
 			\EE::warning( 'Unable to validate EasyEngine logrotate config: ' . $file . ( $message ? '. ' . $message : '' ) );
 			$is_valid = false;
 		}
 
 		return $is_valid;
-	}
-
-	/**
-	 * Check whether logrotate dry-run output contains a real validation error.
-	 *
-	 * @param string $output Dry-run output.
-	 * @return bool
-	 */
-	private static function has_validation_error( $output ) {
-
-		return (bool) preg_match( '/(^|\n)\s*(error:|syntax error|bad |unknown |unexpected |duplicate log entry|.*not found|.*permission denied)/i', $output );
 	}
 
 	/**
