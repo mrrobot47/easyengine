@@ -51,6 +51,7 @@ class Utils {
 
 		if ( $ee_log_written && $sites_written && $proxy_written && self::validate_configs( self::get_config_files() ) ) {
 			self::cleanup_legacy_configs();
+			self::force_rotate_configs( self::get_config_files() );
 		}
 	}
 
@@ -168,6 +169,28 @@ class Utils {
 	private static function has_validation_error( $output ) {
 
 		return (bool) preg_match( '/(^|\n)\s*(error:|syntax error|bad |unknown |unexpected |duplicate log entry|.*not found|.*permission denied)/i', $output );
+	}
+
+	/**
+	 * Force rotate EasyEngine logs once after setup or update.
+	 *
+	 * @param array $files Config files.
+	 * @return bool
+	 */
+	private static function force_rotate_configs( array $files ) {
+
+		$command = 'logrotate -f ' . implode( ' ', array_map( 'escapeshellarg', $files ) ) . ' 2>&1';
+		$result  = \EE::launch( $command, false, true );
+
+		if ( 0 === $result->return_code ) {
+			\EE::debug( 'EasyEngine logs force rotated.' );
+			return true;
+		}
+
+		$message = trim( $result->stdout );
+		\EE::warning( 'Unable to force rotate EasyEngine logs.' . ( $message ? ' ' . $message : '' ) );
+
+		return false;
 	}
 
 	/**
