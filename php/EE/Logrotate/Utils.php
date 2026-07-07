@@ -13,7 +13,7 @@ class Utils {
 	const NGINX_PROXY_CONFIG_FILE = '/etc/logrotate.d/ee_nginx_proxy';
 
 	/**
-	 * Configure logrotate for EasyEngine site and nginx-proxy logs.
+	 * Configure logrotate for EasyEngine CLI, site, and nginx-proxy logs.
 	 */
 	public static function setup_logrotate() {
 
@@ -25,7 +25,7 @@ class Utils {
 	}
 
 	/**
-	 * Configure logrotate for EasyEngine site and nginx-proxy logs.
+	 * Configure logrotate for EasyEngine CLI, site, and nginx-proxy logs.
 	 */
 	private static function setup_logrotate_config() {
 
