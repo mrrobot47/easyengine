@@ -47,7 +47,7 @@ class Utils {
 		$sites_written  = self::write_config( self::SITES_CONFIG_FILE, self::get_sites_config() );
 		$proxy_written  = self::write_config( self::NGINX_PROXY_CONFIG_FILE, self::get_nginx_proxy_config() );
 
-		if ( $ee_log_written && $sites_written && $proxy_written ) {
+		if ( $ee_log_written && $sites_written && $proxy_written && self::validate_configs( self::get_config_files() ) ) {
 			self::cleanup_legacy_configs();
 		}
 	}
@@ -114,6 +114,46 @@ class Utils {
 		\EE::debug( 'EasyEngine logrotate config written: ' . $file );
 
 		return true;
+	}
+
+	/**
+	 * Validate generated logrotate configs.
+	 *
+	 * @param array $files Config files.
+	 * @return bool
+	 */
+	private static function validate_configs( array $files ) {
+
+		$is_valid = true;
+
+		foreach ( $files as $file ) {
+			$result = \EE::launch( 'logrotate -d ' . escapeshellarg( $file ), false, true );
+
+			if ( 0 === $result->return_code ) {
+				\EE::debug( 'EasyEngine logrotate config validated: ' . $file );
+				continue;
+			}
+
+			$message = trim( $result->stderr ?: $result->stdout );
+			\EE::warning( 'Unable to validate EasyEngine logrotate config: ' . $file . ( $message ? '. ' . $message : '' ) );
+			$is_valid = false;
+		}
+
+		return $is_valid;
+	}
+
+	/**
+	 * Return generated EasyEngine logrotate config files.
+	 *
+	 * @return array
+	 */
+	private static function get_config_files() {
+
+		return [
+			self::EE_LOG_CONFIG_FILE,
+			self::SITES_CONFIG_FILE,
+			self::NGINX_PROXY_CONFIG_FILE,
+		];
 	}
 
 	/**
