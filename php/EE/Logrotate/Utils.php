@@ -38,9 +38,11 @@ class Utils {
 			return;
 		}
 
-		if ( ! is_dir( self::CONFIG_DIR ) && ! @mkdir( self::CONFIG_DIR, 0755, true ) ) {
-			\EE::warning( 'Unable to create logrotate config directory: ' . self::CONFIG_DIR );
-			return;
+		if ( ! is_dir( self::CONFIG_DIR ) ) {
+			if ( ! is_writable( dirname( self::CONFIG_DIR ) ) || ! mkdir( self::CONFIG_DIR, 0755, true ) ) {
+				\EE::warning( 'Unable to create logrotate config directory: ' . self::CONFIG_DIR );
+				return;
+			}
 		}
 
 		$ee_log_written = self::write_config( self::EE_LOG_CONFIG_FILE, self::get_ee_log_config() );
@@ -101,16 +103,29 @@ class Utils {
 	 */
 	private static function write_config( $file, $content ) {
 
-		if ( file_exists( $file ) && $content === @file_get_contents( $file ) ) {
+		if ( file_exists( $file ) && is_readable( $file ) && $content === file_get_contents( $file ) ) {
 			return true;
 		}
 
-		if ( false === @file_put_contents( $file, $content ) ) {
+		if ( file_exists( $file ) && ! is_writable( $file ) ) {
+			\EE::warning( 'EasyEngine logrotate config is not writable: ' . $file );
+			return false;
+		}
+
+		if ( ! file_exists( $file ) && ! is_writable( dirname( $file ) ) ) {
+			\EE::warning( 'EasyEngine logrotate config directory is not writable: ' . dirname( $file ) );
+			return false;
+		}
+
+		if ( false === file_put_contents( $file, $content ) ) {
 			\EE::warning( 'Unable to write EasyEngine logrotate config: ' . $file );
 			return false;
 		}
 
-		@chmod( $file, 0644 );
+		if ( ! chmod( $file, 0644 ) ) {
+			\EE::warning( 'Unable to set permissions on EasyEngine logrotate config: ' . $file );
+		}
+
 		\EE::debug( 'EasyEngine logrotate config written: ' . $file );
 
 		return true;
@@ -170,13 +185,22 @@ class Utils {
 				continue;
 			}
 
-			$contents = @file_get_contents( $file );
+			if ( ! is_readable( $file ) ) {
+				continue;
+			}
+
+			$contents = file_get_contents( $file );
 
 			if ( false === $contents || ! self::is_legacy_config( $basename, $contents ) ) {
 				continue;
 			}
 
-			if ( @unlink( $file ) ) {
+			if ( ! is_writable( dirname( $file ) ) ) {
+				\EE::warning( 'Unable to remove legacy EasyEngine logrotate config, directory is not writable: ' . $file );
+				continue;
+			}
+
+			if ( unlink( $file ) ) {
 				\EE::debug( 'Removed legacy EasyEngine logrotate config: ' . $file );
 			} else {
 				\EE::warning( 'Unable to remove legacy EasyEngine logrotate config: ' . $file );
