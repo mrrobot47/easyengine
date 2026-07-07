@@ -109,6 +109,7 @@ class Utils {
 		}
 
 		@chmod( $file, 0644 );
+		\EE::debug( 'EasyEngine logrotate config written: ' . $file );
 
 		return true;
 	}
@@ -137,7 +138,9 @@ class Utils {
 				continue;
 			}
 
-			if ( ! @unlink( $file ) ) {
+			if ( @unlink( $file ) ) {
+				\EE::debug( 'Removed legacy EasyEngine logrotate config: ' . $file );
+			} else {
 				\EE::warning( 'Unable to remove legacy EasyEngine logrotate config: ' . $file );
 			}
 		}
