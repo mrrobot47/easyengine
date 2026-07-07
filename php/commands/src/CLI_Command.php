@@ -322,15 +322,6 @@ class CLI_Command extends EE_Command {
 			EE::error( 'The downloaded PHAR is broken, try running ee cli update again.' );
 		}
 		EE::log( 'New version works. Proceeding to replace.' );
-		$mode = fileperms( $old_phar ) & 511;
-		if ( false === chmod( $temp, $mode ) ) {
-			EE::error( sprintf( 'Cannot chmod %s.', $temp ) );
-		}
-		class_exists( '\cli\Streams' ); // This autoloads \cli\Streams - after we move the file we no longer have access to this class.
-		class_exists( '\cli\Colors' ); // This autoloads \cli\Colors
-		if ( false === rename( $temp, $old_phar ) ) {
-			EE::error( sprintf( 'Cannot move %s to %s', $temp, $old_phar ) );
-		}
 		if ( Utils\get_flag_value( $assoc_args, 'nightly' ) ) {
 			$updated_version = 'the latest nightly release';
 		} elseif ( Utils\get_flag_value( $assoc_args, 'stable' ) ) {
@@ -338,7 +329,18 @@ class CLI_Command extends EE_Command {
 		} else {
 			$updated_version = $newest['version'];
 		}
-		EE::success( sprintf( 'Updated EE to %s.', $updated_version ) );
+		$is_quiet = ! empty( EE::get_runner()->config['quiet'] );
+		$mode = fileperms( $old_phar ) & 511;
+		if ( false === chmod( $temp, $mode ) ) {
+			EE::error( sprintf( 'Cannot chmod %s.', $temp ) );
+		}
+		if ( false === rename( $temp, $old_phar ) ) {
+			EE::error( sprintf( 'Cannot move %s to %s', $temp, $old_phar ) );
+		}
+		// The running Phar has been replaced; avoid logger/color autoloads from it.
+		if ( ! $is_quiet ) {
+			fwrite( STDOUT, sprintf( 'Success: Updated EE to %s.' . PHP_EOL, $updated_version ) );
+		}
 	}
 
 	/**
