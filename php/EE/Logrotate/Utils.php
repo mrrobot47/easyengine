@@ -245,7 +245,6 @@ class Utils {
     delaycompress
     notifempty
     copytruncate
-    create 0640 www-data adm
     sharedscripts
 }
 LOGROTATE
@@ -270,7 +269,6 @@ LOGROTATE
     delaycompress
     notifempty
     copytruncate
-    create 0640 www-data adm
     sharedscripts
 }
 LOGROTATE
