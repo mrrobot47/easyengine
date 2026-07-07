@@ -133,7 +133,7 @@ class Utils {
 
 			$contents = @file_get_contents( $file );
 
-			if ( false === $contents || ! self::is_legacy_config( $contents ) ) {
+			if ( false === $contents || ! self::is_legacy_config( $basename, $contents ) ) {
 				continue;
 			}
 
@@ -146,15 +146,84 @@ class Utils {
 	/**
 	 * Check whether a config duplicates EasyEngine log rotation.
 	 *
+	 * @param string $basename Config file basename.
 	 * @param string $contents Config contents.
 	 * @return bool
 	 */
-	private static function is_legacy_config( $contents ) {
+	private static function is_legacy_config( $basename, $contents ) {
 
-		$root_dir = rtrim( EE_ROOT_DIR, '/' );
+		return self::is_legacy_site_config( $basename, $contents )
+			|| self::is_legacy_nginx_proxy_config( $basename, $contents );
+	}
 
-		return false !== strpos( $contents, $root_dir . '/sites/' )
-			|| false !== strpos( $contents, $root_dir . '/services/nginx-proxy/logs/*.log' );
+	/**
+	 * Check whether a config matches old per-site generated configs.
+	 *
+	 * @param string $basename Config file basename.
+	 * @param string $contents Config contents.
+	 * @return bool
+	 */
+	private static function is_legacy_site_config( $basename, $contents ) {
+
+		$site = substr( $basename, 3 );
+
+		if ( ! preg_match( '/^ee_[A-Za-z0-9.-]+$/', $basename ) || false === strpos( $site, '.' ) ) {
+			return false;
+		}
+
+		foreach ( self::get_legacy_roots() as $root_dir ) {
+			$site_path = preg_quote( $root_dir . '/sites/' . $site, '/' );
+
+			if (
+				preg_match( '/' . $site_path . '\/logs\/nginx\/\*\.log/', $contents )
+				&& preg_match( '/' . $site_path . '\/logs\/php\/\*\.log/', $contents )
+				&& false !== strpos( $contents, 'docker inspect -f' )
+			) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Check whether a config matches old nginx-proxy generated config.
+	 *
+	 * @param string $basename Config file basename.
+	 * @param string $contents Config contents.
+	 * @return bool
+	 */
+	private static function is_legacy_nginx_proxy_config( $basename, $contents ) {
+
+		if ( 'ee_nginx_proxy_logrotate' !== $basename ) {
+			return false;
+		}
+
+		foreach ( self::get_legacy_roots() as $root_dir ) {
+			$proxy_path = $root_dir . '/services/nginx-proxy/logs/*.log';
+
+			if ( false !== strpos( $contents, $proxy_path ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Return root paths used by current and legacy EE logrotate configs.
+	 *
+	 * @return array
+	 */
+	private static function get_legacy_roots() {
+
+		$roots = [ rtrim( EE_ROOT_DIR, '/' ) ];
+
+		if ( '/opt/easyengine' !== $roots[0] ) {
+			$roots[] = '/opt/easyengine';
+		}
+
+		return $roots;
 	}
 
 	/**
