@@ -16,6 +16,18 @@ class Utils {
 	 */
 	public static function setup_logrotate() {
 
+		try {
+			self::setup_logrotate_config();
+		} catch ( \Throwable $e ) {
+			\EE::warning( 'Unable to setup EasyEngine logrotate config: ' . $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Configure logrotate for EasyEngine site and nginx-proxy logs.
+	 */
+	private static function setup_logrotate_config() {
+
 		if ( defined( 'IS_DARWIN' ) && IS_DARWIN ) {
 			\EE::debug( 'Skipping logrotate setup on macOS.' );
 			return;
