@@ -124,22 +124,18 @@ class Utils {
 	 */
 	private static function validate_configs( array $files ) {
 
-		$is_valid = true;
+		$command = 'logrotate -d ' . implode( ' ', array_map( 'escapeshellarg', $files ) ) . ' 2>&1';
+		$result  = \EE::launch( $command, false, true );
 
-		foreach ( $files as $file ) {
-			$result = \EE::launch( 'logrotate -d ' . escapeshellarg( $file ), false, true );
-
-			if ( 0 === $result->return_code ) {
-				\EE::debug( 'EasyEngine logrotate config validated: ' . $file );
-				continue;
-			}
-
-			$message = trim( $result->stderr ?: $result->stdout );
-			\EE::warning( 'Unable to validate EasyEngine logrotate config: ' . $file . ( $message ? '. ' . $message : '' ) );
-			$is_valid = false;
+		if ( 0 === $result->return_code ) {
+			\EE::debug( 'EasyEngine logrotate configs validated.' );
+			return true;
 		}
 
-		return $is_valid;
+		$message = trim( $result->stdout ?: $result->stderr );
+		\EE::warning( 'Unable to validate EasyEngine logrotate configs.' . ( $message ? ' ' . $message : '' ) );
+
+		return false;
 	}
 
 	/**
