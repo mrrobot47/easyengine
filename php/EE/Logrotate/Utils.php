@@ -69,7 +69,7 @@ class Utils {
 		\EE::log( 'Installing logrotate.' );
 		$result = \EE::launch( 'DEBIAN_FRONTEND=noninteractive apt-get install -y logrotate', false, true );
 
-		if ( 0 !== $result->return_code || ! self::command_exists( 'logrotate' ) ) {
+		if ( 0 !== $result->return_code ) {
 			\EE::warning( 'Unable to install logrotate. Skipping EasyEngine logrotate setup.' );
 			return false;
 		}
