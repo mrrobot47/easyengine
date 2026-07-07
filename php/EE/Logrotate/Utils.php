@@ -139,8 +139,10 @@ class Utils {
 	 */
 	private static function is_legacy_config( $contents ) {
 
-		return false !== strpos( $contents, '/opt/easyengine/sites/' )
-			|| false !== strpos( $contents, '/opt/easyengine/services/nginx-proxy/logs/*.log' );
+		$root_dir = rtrim( EE_ROOT_DIR, '/' );
+
+		return false !== strpos( $contents, $root_dir . '/sites/' )
+			|| false !== strpos( $contents, $root_dir . '/services/nginx-proxy/logs/*.log' );
 	}
 
 	/**
@@ -150,9 +152,11 @@ class Utils {
 	 */
 	private static function get_sites_config() {
 
-		return <<<'LOGROTATE'
-/opt/easyengine/sites/*/logs/nginx/*.log
-/opt/easyengine/sites/*/logs/php/*.log {
+		$root_dir = rtrim( EE_ROOT_DIR, '/' );
+
+		return <<<LOGROTATE
+{$root_dir}/sites/*/logs/nginx/*.log
+{$root_dir}/sites/*/logs/php/*.log {
     daily
     missingok
     rotate 30
@@ -174,8 +178,10 @@ LOGROTATE
 	 */
 	private static function get_nginx_proxy_config() {
 
-		return <<<'LOGROTATE'
-/opt/easyengine/services/nginx-proxy/logs/*.log {
+		$root_dir = rtrim( EE_ROOT_DIR, '/' );
+
+		return <<<LOGROTATE
+{$root_dir}/services/nginx-proxy/logs/*.log {
     daily
     missingok
     rotate 30
