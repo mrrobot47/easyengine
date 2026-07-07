@@ -245,8 +245,10 @@ class Utils {
 				continue;
 			}
 
-			if ( ! is_writable( dirname( $file ) ) ) {
-				\EE::warning( 'Unable to remove legacy EasyEngine logrotate config, directory is not writable: ' . $file );
+			$directory = dirname( $file );
+
+			if ( ! is_writable( $directory ) ) {
+				\EE::warning( 'Unable to remove legacy EasyEngine logrotate config, directory is not writable: ' . $directory );
 				continue;
 			}
 
