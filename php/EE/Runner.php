@@ -174,6 +174,7 @@ class Runner {
 		$rsp->add_step( 'ee-docker-image-migrations', 'EE\Migration\Containers::start_container_migration' );
 		$rsp->add_step( 'ee-update-docker-compose', 'EE\Migration\Containers::update_docker_compose' );
 		$rsp->add_step( 'ee-update-cron-config', 'EE\Cron\Utils\update_cron_config' );
+		$rsp->add_step( 'ee-setup-logrotate', 'EE\Logrotate\Utils::setup_logrotate' );
 
 		return $rsp->execute();
 	}
