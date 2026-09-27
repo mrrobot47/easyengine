@@ -24,6 +24,8 @@ class EE {
 
 	private static $file_logger;
 
+	private static $process_runner;
+
 	/**
 	 * Set the logger instance.
 	 *
@@ -835,8 +837,7 @@ class EE {
 		self::debug( '-----------------------' );
 		self::debug( "COMMAND: $command_to_log" );
 
-		$proc    = Process::create( $command, $cwd, $env );
-		$results = $proc->run();
+		$results = self::run_process( $command, $cwd, $env );
 
 		self::debug_run_command( $results );
 
@@ -876,8 +877,7 @@ class EE {
 		self::debug( '-----------------------' );
 		self::debug( "COMMAND: $command_to_log" );
 
-		$proc    = Process::create( $command, null, null );
-		$results = $proc->run();
+		$results = self::run_process( $command );
 
 		self::debug_run_command( $results );
 
@@ -900,6 +900,28 @@ class EE {
 
 		return false;
 
+	}
+
+	/**
+	 * Replace the process execution behind launch() and exec(). Test seam: it has no effect unless called.
+	 *
+	 * @param callable|null $runner Called as $runner( $command, $cwd, $env ); must return a ProcessRun. Null restores real processes.
+	 */
+	public static function set_process_runner( $runner ) {
+		self::$process_runner = $runner;
+	}
+
+	/**
+	 * Run a command through the process runner, or as a real process when none is set.
+	 *
+	 * @return ProcessRun
+	 */
+	private static function run_process( $command, $cwd = null, $env = null ) {
+		if ( self::$process_runner ) {
+			return call_user_func( self::$process_runner, $command, $cwd, $env );
+		}
+
+		return Process::create( $command, $cwd, $env )->run();
 	}
 
 	/**
