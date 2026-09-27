@@ -177,6 +177,50 @@ class DbMigrationsTest extends TestCase {
 		$this->assertContains( 'alias_domains', TestDB::columns( 'sites' ) );
 	}
 
+	/** Run the docker/compose check migration with a fake docker-compose binary at $compose_version. */
+	private function run_check_and_update_docker_one( $compose_version ) {
+		$compose = $this->sandbox() . '/docker-compose';
+		file_put_contents( $compose, 'binary' );
+		$this->runner->on( '/^docker version /', "29.8.1\n" );
+		$this->runner->on( '/^docker-compose version --short$/', "$compose_version\n" );
+		$this->runner->on( '/^command -v docker-compose$/', "$compose\n" );
+		require_once EE_ROOT . '/migrations/db/20240502102550_easyengine_check_and_update_docker_one.php';
+		try {
+			( new EE\Migration\CheckAndUpdateDockerOne() )->up();
+		} catch ( EE\ExitException $e ) {
+			// It errors when the (faked) compose version is still not 1.29.2 after the download.
+		}
+		@unlink( EE_BACKUP_DIR . '/docker-compose.backup' );
+
+		return $compose;
+	}
+
+	public function test_check_and_update_docker_one_replaces_compose_on_upgrade() {
+		EE\Model\Option::set( 'version', '4.7.0' );
+		$compose = $this->run_check_and_update_docker_one( '2.27.0' );
+		$new     = EE_BACKUP_DIR . '/docker-compose';
+		$this->assertSame(
+			[
+				"curl -L https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m) -o $new && chmod +x $new",
+				"mv $new $compose",
+			],
+			$this->runner->matching( '/^(curl|mv) /' )
+		);
+		$this->assertStringContainsString( 'Docker-compose version should be 1.29.2', $this->stderr() );
+	}
+
+	/**
+	 * MIG-20: the constructor doesn't call parent::__construct(), so the first-execution skip never applies and a fresh install downgrades docker-compose to 1.29.2.
+	 *
+	 * @group known-bug
+	 * @group MIG-20
+	 */
+	public function test_check_and_update_docker_one_is_skipped_on_a_fresh_install() {
+		$this->assertFalse( EE\Model\Option::get( 'version' ) );
+		$this->run_check_and_update_docker_one( '5.5.1' );
+		$this->assertSame( [], $this->runner->commands() );
+	}
+
 	private function assertRegExpCompat( $pattern, $string, $message = '' ) {
 		$this->assertSame( 1, preg_match( $pattern, $string ), $message . ": $string" );
 	}
