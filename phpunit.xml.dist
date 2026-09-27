@@ -1,11 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Run: php -d auto_prepend_file=tests/phpunit/prepend.php vendor/bin/phpunit (see tests/phpunit/README.md). -->
 <phpunit
-	bootstrap="tests/bootstrap.php"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+	bootstrap="tests/phpunit/bootstrap.php"
 	colors="true"
+	beStrictAboutOutputDuringTests="true"
+	failOnRisky="true"
+	failOnWarning="true"
+	cacheResult="false"
 	>
 	<testsuites>
-		<testsuite>
-			<directory prefix="spec-" suffix=".php">tests/</directory>
-			<directory prefix="test-" suffix=".php">tests/</directory>
+		<testsuite name="core">
+			<directory suffix="Test.php">tests/phpunit/unit</directory>
 		</testsuite>
 	</testsuites>
+	<groups>
+		<exclude>
+			<!-- Tests pinning open bugs from issues.md; they fail until the bug is fixed. Run with: - -group known-bug -->
+			<group>known-bug</group>
+		</exclude>
+	</groups>
 </phpunit>
