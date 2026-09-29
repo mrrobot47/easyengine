@@ -63,10 +63,9 @@ class ProcessTest extends TestCase {
 	}
 
 	/**
-	 * MIG-12: run() reads stdout to EOF before stderr, so a child writing more than a pipe buffer (64 KiB) to stderr first deadlocks.
+	 * MIG-12 (fixed in v4.13.1): run() reads stdout to EOF before stderr, so a child writing more than a pipe buffer (64 KiB) to stderr first deadlocks.
 	 * Runs Process in a child PHP that is killed after 5 s.
 	 *
-	 * @group known-bug
 	 * @group MIG-12
 	 */
 	public function test_run_does_not_deadlock_on_large_stderr() {
