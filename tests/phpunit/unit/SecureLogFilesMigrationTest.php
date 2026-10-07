@@ -58,6 +58,27 @@ class SecureLogFilesMigrationTest extends TestCase {
 		return substr( sprintf( '%o', fileperms( $path ) ), -4 );
 	}
 
+	/**
+	 * Give $dir a default ACL granting others rwx, as GitHub runners have on /opt; skips where that isn't possible or has no effect.
+	 */
+	private function give_default_acl( $dir ) {
+		exec( 'command -v setfacl', $out, $rc );
+		if ( 0 !== $rc ) {
+			$this->markTestSkipped( 'setfacl (package acl) is not installed.' );
+		}
+		exec( 'setfacl -d -m o::rwx ' . escapeshellarg( $dir ) . ' 2>&1', $out, $rc );
+		$probe = $dir . '/acl-probe';
+		$umask = umask( 0077 );
+		touch( $probe );
+		umask( $umask );
+		clearstatcache();
+		$mode = fileperms( $probe ) & 0777;
+		unlink( $probe );
+		if ( 0 !== $rc || 0600 === $mode ) {
+			$this->markTestSkipped( 'A default ACL has no effect on this filesystem.' );
+		}
+	}
+
 	private function run_migration() {
 		$this->assertFileExists( EE_ROOT . '/' . self::MIGRATION );
 		require_once EE_ROOT . '/' . self::MIGRATION;
@@ -135,6 +156,22 @@ class SecureLogFilesMigrationTest extends TestCase {
 		$this->assertSame( 21, substr_count( $this->read_log( $plain ), "\n" ) );
 		$this->assertSame( [], glob( $this->logs . '/*.ee-scrub' ) );
 		$this->assertSame( "renewed\n", file_get_contents( $cron ) );
+	}
+
+	/**
+	 * LOG-6: the masked copy that replaces a log is 0600 even when a default ACL on the logs dir overrides the umask.
+	 *
+	 * @group LOG-6
+	 */
+	public function test_a_scrubbed_log_is_private_under_a_default_acl() {
+		$this->give_default_acl( $this->logs );
+		$path = $this->write_log( 'ee.log.1', "ee site create a.test --admin-pass=AclSecret1\n" );
+
+		$this->run_migration();
+
+		$this->assertStringNotContainsString( 'AclSecret1', $this->read_log( $path ) );
+		$this->assertSame( '0600', $this->mode( $path ) );
+		$this->assertSame( [], glob( $this->logs . '/*.ee-scrub' ) );
 	}
 
 	public function test_symlinks_are_not_followed() {

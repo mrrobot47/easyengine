@@ -28,6 +28,27 @@ class LogSecretsTest extends TestCase {
 		parent::tearDown();
 	}
 
+	/**
+	 * Give $dir a default ACL granting others rwx, as GitHub runners have on /opt; skips where that isn't possible or has no effect.
+	 */
+	private function give_default_acl( $dir ) {
+		exec( 'command -v setfacl', $out, $rc );
+		if ( 0 !== $rc ) {
+			$this->markTestSkipped( 'setfacl (package acl) is not installed.' );
+		}
+		exec( 'setfacl -d -m o::rwx ' . escapeshellarg( $dir ) . ' 2>&1', $out, $rc );
+		$probe = $dir . '/acl-probe';
+		$umask = umask( 0077 );
+		touch( $probe );
+		umask( $umask );
+		clearstatcache();
+		$mode = fileperms( $probe ) & 0777;
+		unlink( $probe );
+		if ( 0 !== $rc || 0600 === $mode ) {
+			$this->markTestSkipped( 'A default ACL has no effect on this filesystem.' );
+		}
+	}
+
 	/** @return string The log file written by the real file logger set up by Runner::init_logger(). */
 	private function init_file_logger() {
 		// init_logger() also replaces the terminal logger.
@@ -87,6 +108,21 @@ class LogSecretsTest extends TestCase {
 		umask( $umask );
 
 		$this->assertSame( '0700', substr( sprintf( '%o', fileperms( dirname( $log ) ) ), -4 ) );
+		$this->assertSame( '0600', substr( sprintf( '%o', fileperms( $log ) ), -4 ) );
+	}
+
+	/**
+	 * LOG-6: a default ACL on the logs dir overrides the umask, so the new log needs an explicit mode.
+	 *
+	 * @group LOG-6
+	 */
+	public function test_a_new_log_file_is_private_under_a_default_acl() {
+		mkdir( EE_ROOT_DIR . '/logs', 0700 );
+		$this->give_default_acl( EE_ROOT_DIR . '/logs' );
+
+		$log = $this->init_file_logger();
+
+		clearstatcache();
 		$this->assertSame( '0600', substr( sprintf( '%o', fileperms( $log ) ), -4 ) );
 	}
 
