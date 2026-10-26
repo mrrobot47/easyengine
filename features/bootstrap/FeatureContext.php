@@ -843,8 +843,8 @@ class FeatureContext implements Context
 			}
 			// Running containers take precedence over the options table, as in the migration.
 			$current = array_key_exists( $image, $running ) ? $running[ $image ] : self::get_option( $image );
-			// An image nothing runs or records isn't pulled since the upgrade fix, so only a tracked stale tag counts.
-			if ( null !== $current && $current !== $version ) {
+			// An image nothing runs or records (no option row: false) isn't pulled since the upgrade fix, so only a tracked stale tag counts.
+			if ( false !== $current && null !== $current && $current !== $version ) {
 				return;
 			}
 			if ( null === $free && ! array_key_exists( $image, $running ) ) {
