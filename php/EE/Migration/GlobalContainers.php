@@ -33,6 +33,9 @@ class GlobalContainers {
 	/** Seconds a service must stay up without restarting after its first successful probe. */
 	const SETTLE_SECONDS = 2;
 
+	/** Seconds one readiness probe may run inside the container before it counts as failed. */
+	const PROBE_TIMEOUT = 10;
+
 	/** Services with a readiness probe. The others (cron, newrelic-daemon) only need to have started. */
 	const PROBED_SERVICES = [ 'global-nginx-proxy', 'global-db', 'global-redis' ];
 
@@ -116,7 +119,14 @@ class GlobalContainers {
 	 * @throws \Exception
 	 */
 	public static function check_running_proxy_config( $container ) {
-		if ( 'running' === self::get_container_state( $container )['status'] && ! EE::exec( 'docker exec ' . escapeshellarg( $container ) . ' nginx -t' ) ) {
+		if ( 'running' !== self::get_container_state( $container )['status'] ) {
+			return;
+		}
+		$result = self::probe_exec( $container, 'nginx', '-t' );
+		if ( self::timed_out( $result ) ) {
+			throw new \Exception( sprintf( '`nginx -t` in the running %s did not finish within %d s, so the upgrade cannot check its configuration. Check `docker exec %s nginx -t` and run the upgrade again.', $container, self::PROBE_TIMEOUT, $container ) );
+		}
+		if ( $result->return_code ) {
 			throw new \Exception( "The configuration of the running $container fails `nginx -t`, so a recreated proxy would not start. Fix it (see `docker exec $container nginx -t`) and run the upgrade again." );
 		}
 	}
@@ -276,12 +286,11 @@ class GlobalContainers {
 	 * @return string Why it failed, or '' when it passed.
 	 */
 	private static function probe( $service, $container ) {
-		$exec = 'docker exec ' . escapeshellarg( $container ) . ' ';
-
 		switch ( $service ) {
 			case 'global-nginx-proxy':
-				if ( ! EE::exec( $exec . 'nginx -t' ) ) {
-					return 'nginx -t failed';
+				$result = self::probe_exec( $container, 'nginx', '-t' );
+				if ( $result->return_code ) {
+					return self::probe_failure( 'nginx -t', $result );
 				}
 				// Any HTTP status proves nginx answers through the published port; 443 is the same process.
 				$port   = (string) \EE\Utils\get_config_value( 'proxy_80_port', '80' );
@@ -296,16 +305,53 @@ class GlobalContainers {
 				// Over TCP: the entrypoint's temporary init/upgrade server listens on the socket only. Access denied still means alive.
 				$ping = 'for c in mariadb-admin mysqladmin; do command -v $c >/dev/null 2>&1 && exec $c ping -h 127.0.0.1 --protocol=tcp --connect-timeout=2 --silent; done; exit 1';
 
-				return EE::exec( $exec . 'sh -c ' . escapeshellarg( $ping ) ) ? '' : 'mysqladmin ping failed';
+				$result = self::probe_exec( $container, 'sh', '-c', $ping );
+
+				return $result->return_code ? self::probe_failure( 'mysqladmin ping', $result ) : '';
 
 			case 'global-redis':
-				$pong = trim( EE::launch( $exec . 'redis-cli ping' )->stdout );
+				$result = self::probe_exec( $container, 'redis-cli', 'ping' );
+				$pong   = trim( $result->stdout );
 
 				// NOAUTH (a requirepass in redis.conf) still means redis answers.
-				return 'PONG' === $pong || 0 === strpos( $pong, 'NOAUTH' ) ? '' : 'redis-cli ping failed';
+				return 'PONG' === $pong || 0 === strpos( $pong, 'NOAUTH' ) ? '' : self::probe_failure( 'redis-cli ping', $result );
 		}
 
 		return '';
+	}
+
+	/**
+	 * Run a probe command in a container under `timeout`, so a service that accepts connections but never answers
+	 * can't hang the upgrade. Where `timeout` doesn't work (busybox before 1.30 wants `-t`), the command runs unbounded.
+	 *
+	 * @param string $container Container name.
+	 * @param string ...$args   Command and its arguments.
+	 *
+	 * @return \EE\ProcessRun
+	 */
+	private static function probe_exec( $container, ...$args ) {
+		$bounded = sprintf( 'if timeout 1 true >/dev/null 2>&1; then exec timeout %d "$@"; fi; exec "$@"', self::PROBE_TIMEOUT );
+
+		return EE::launch( 'docker exec ' . escapeshellarg( $container ) . ' sh -c ' . escapeshellarg( $bounded ) . ' probe ' . implode( ' ', array_map( 'escapeshellarg', $args ) ) );
+	}
+
+	/**
+	 * @param \EE\ProcessRun $result From probe_exec().
+	 *
+	 * @return bool Whether `timeout` killed the probe: 124 from coreutils, 143 (SIGTERM) from busybox.
+	 */
+	private static function timed_out( $result ) {
+		return in_array( (int) $result->return_code, [ 124, 143 ], true );
+	}
+
+	/**
+	 * @param string          $probe  Probe name.
+	 * @param \EE\ProcessRun $result From probe_exec().
+	 *
+	 * @return string Why the probe failed.
+	 */
+	private static function probe_failure( $probe, $result ) {
+		return self::timed_out( $result ) ? sprintf( '%s timed out after %d s', $probe, self::PROBE_TIMEOUT ) : "$probe failed";
 	}
 
 	/**
