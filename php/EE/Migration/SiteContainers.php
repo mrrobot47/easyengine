@@ -107,7 +107,7 @@ class SiteContainers {
 	}
 
 	/**
-	 * Whether a site is served over plain HTTP: without SSL, or while its Let's Encrypt certificate waits for `ee site ssl-verify`.
+	 * Whether the site's docker-compose.yml turns HTTPS off: without SSL, or while its Let's Encrypt certificate waits for `ee site ssl-verify`.
 	 *
 	 * With HTTPS on, nginx-proxy would serve a pending site with the closest matching certificate of another site.
 	 *
