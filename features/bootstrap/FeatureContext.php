@@ -837,13 +837,14 @@ class FeatureContext implements Context
 		}
 		$free = null;
 		foreach ( json_decode( file_get_contents( EE_ROOT . '/img-versions.json' ), true ) as $image => $version ) {
-			// Same exclusions as Containers::start_container_migration().
-			if ( preg_match( '#^easyengine/(php\d|newrelic-daemon)#', $image ) ) {
+			// Never pulled by the migration (easyengine/php only since the upgrade fix).
+			if ( preg_match( '#^easyengine/(php(\d|$)|newrelic-daemon)#', $image ) ) {
 				continue;
 			}
 			// Running containers take precedence over the options table, as in the migration.
 			$current = array_key_exists( $image, $running ) ? $running[ $image ] : self::get_option( $image );
-			if ( $current !== $version ) {
+			// An image nothing runs or records isn't pulled since the upgrade fix, so only a tracked stale tag counts.
+			if ( null !== $current && $current !== $version ) {
 				return;
 			}
 			if ( null === $free && ! array_key_exists( $image, $running ) ) {
