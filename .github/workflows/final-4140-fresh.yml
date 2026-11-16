@@ -1,0 +1,144 @@
+# Temp-branch test (QA CI-10): fresh install (no /opt/easyengine, no DB) of the v4.14.0 release phar on amd64 runners
+# (ubuntu-24.04 and ubuntu-latest = 26.04) with standalone docker-compose v5.5.1, plus the same on ubuntu-24.04-arm
+# (informational: images are amd64-only, so it is expected to stop at the first pull).
+# The phar is built from the release commit with the tag job's commands (composer install --no-dev from the lock, make-phar).
+name: Final v4.14.0 fresh install
+
+on:
+  push:
+    branches:
+      - 'tmp/final-4140-fresh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CORE_REPO: mrrobot47/easyengine
+  CORE_SHA: 5ca484f2d6909841692abc969ea18597f8bc4131
+  EXPECT_VERSION: 4.14.0
+  COMPOSE_VERSION: v5.5.1
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+
+jobs:
+  build:
+    name: Build the release phar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out core at the release commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.CORE_REPO }}
+          ref: ${{ env.CORE_SHA }}
+          path: core
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:2.10.3
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Build the phar (tag job's commands)
+        working-directory: core
+        run: |
+          git rev-parse HEAD
+          composer --version
+          composer install --no-dev --no-progress --no-interaction
+          cat VERSION
+          php -dphar.readonly=0 utils/make-phar.php easyengine.phar
+          v=$(php easyengine.phar cli version); echo "$v"; [ "$v" = "EE $EXPECT_VERSION" ]
+          mkdir -p "$RUNNER_TEMP/phar-out"; cp easyengine.phar "$RUNNER_TEMP/phar-out/"
+          { git rev-parse HEAD; composer --version; php -v | head -1; } > "$RUNNER_TEMP/phar-out/build-info.txt"
+
+      - name: Hash the phar contents
+        run: |
+          O=$RUNNER_TEMP/phar-out
+          php -r '$p = new Phar($argv[1]); $p->extractTo($argv[2]);' "$O/easyengine.phar" "$RUNNER_TEMP/x"
+          (cd "$RUNNER_TEMP/x" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$O/phar-files.sha256"
+          wc -l < "$O/phar-files.sha256"
+          (cd "$O" && md5sum easyengine.phar > easyengine.phar.md5 && sha512sum easyengine.phar > easyengine.phar.sha512)
+          cat "$O/build-info.txt" "$O/easyengine.phar.md5"
+
+      - name: Upload the phar and its hashes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-phar
+          path: ${{ runner.temp }}/phar-out
+          retention-days: 14
+
+  fresh:
+    name: fresh install / ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.os == 'ubuntu-24.04-arm' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - name: Free disk space and set paths
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"
+          echo "PHAR=$RUNNER_TEMP/new/easyengine.phar" >> "$GITHUB_ENV"
+          : > "$OUT/results.txt"; chmod 666 "$OUT/results.txt"
+          df -h / | tail -1; uname -m; . /etc/os-release; echo "$PRETTY_NAME"
+
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Prepare the host (docker-compose v5.5.1 standalone)
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq >/dev/null
+          sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          command -v docker-compose; docker-compose version; sha256sum /usr/local/bin/docker-compose
+          docker version --format 'docker {{.Server.Version}}'
+
+      - name: Get the phar under test
+        uses: actions/download-artifact@v8
+        with:
+          name: release-phar
+          path: ${{ runner.temp }}/new
+
+      - name: Check the phar
+        run: |
+          cd "$RUNNER_TEMP/new"; md5sum -c easyengine.phar.md5; cat build-info.txt
+          v=$(php easyengine.phar cli version); echo "$v"; [ "$v" = "EE $EXPECT_VERSION" ]
+
+      - name: Fresh install, sites, checks
+        run: sudo --preserve-env=OUT,RES,PHAR,EXPECT_VERSION,COMPOSE_INTERACTIVE_NO_CLI bash .github/final4140fresh/fresh.sh
+
+      - name: Collect and summarise
+        if: always()
+        run: |
+          set +e
+          sudo sh -c 'cp /opt/easyengine/logs/ee.log* "$0"/' "$OUT" 2>/dev/null
+          sudo chown -R "$USER" "$OUT"
+          {
+            echo "## ${{ matrix.os }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"
+            echo; echo '```'; cat "$RES" | cut -c1-500; echo '```'
+          } > "$OUT/summary.md"
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/summary.md"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fresh-${{ matrix.os }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+      - name: Fail on any FAIL check
+        run: "! grep -q '^FAIL' \"$RES\""
