@@ -114,8 +114,9 @@ jobs:
 
       - name: Check the phar
         run: |
+          # No `php easyengine.phar` here: any ee run as the runner user creates /opt/easyengine (writable via the /opt ACL) and spoils the fresh host.
           cd "$RUNNER_TEMP/new"; md5sum -c easyengine.phar.md5; cat build-info.txt
-          v=$(php easyengine.phar cli version); echo "$v"; [ "$v" = "EE $EXPECT_VERSION" ]
+          ls -d /opt/easyengine 2>&1 || true
 
       - name: Fresh install, sites, checks
         run: sudo --preserve-env=OUT,RES,PHAR,EXPECT_VERSION,COMPOSE_INTERACTIVE_NO_CLI bash .github/final4140fresh/fresh.sh

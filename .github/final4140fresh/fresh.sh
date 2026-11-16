@@ -26,6 +26,9 @@ docker images --format '{{.Repository}}:{{.Tag}}' | sort > "$OUT/images-before.t
 install -m 0755 "$PHAR" /usr/local/bin/ee
 v=$(ee cli version 2>&1); chk "ee cli version = EE $EXPECT_VERSION" "$v" eq "$v" "EE $EXPECT_VERSION"
 ee cli info > "$OUT/cli-info.out" 2> "$OUT/cli-info.err"; r=$?
+cp /opt/easyengine/logs/ee.log "$OUT/ee.log.after-cli-info" 2>/dev/null
+info "ee.log after cli info: $(wc -l < /opt/easyengine/logs/ee.log 2>/dev/null) lines, $(grep -c 'Pulling docker image' /opt/easyengine/logs/ee.log 2>/dev/null) image pulls, $(grep -c 'Migrating:' /opt/easyengine/logs/ee.log 2>/dev/null) Migrating lines"
+
 cat "$OUT/cli-info.out" "$OUT/cli-info.err"
 chk "ee cli info rc 0 on a fresh host" "rc=$r" eq "$r" 0
 chk "cli info shows EE version $EXPECT_VERSION" "$(grep -i 'EE version' "$OUT/cli-info.out" | tr -s ' ')" grep -qiE "EE version[[:space:]|]+$EXPECT_VERSION" "$OUT/cli-info.out"
@@ -63,7 +66,7 @@ chk "no docker-compose backup/download left in .backup" "$(ls /opt/easyengine/.b
 
 # --- pulls and images
 cp /opt/easyengine/logs/ee.log* "$OUT/" 2>/dev/null
-zgrep -hoE 'docker pull [^ ]+|docker-compose pull[^"]*|Pulling [^ ]+' /opt/easyengine/logs/ee.log* 2>/dev/null | sort | uniq -c > "$OUT/pulls.txt"
+zgrep -hoE 'docker pull [^ ]+|Pulling docker image [^ ]+|Pulling [^ ]+ \(' /opt/easyengine/logs/ee.log* 2>/dev/null | sort | uniq -c > "$OUT/pulls.txt"
 info "pulls in ee.log: $(tr -s ' ' < "$OUT/pulls.txt" | tr '\n' ';')"
 docker images --format '{{.Repository}}:{{.Tag}}' | sort > "$OUT/images-after.txt"
 comm -13 "$OUT/images-before.txt" "$OUT/images-after.txt" > "$OUT/images-new.txt"
@@ -80,7 +83,7 @@ while IFS=$'\t' read -r name img st; do
   case $st in Up*) ;; *) bad="$bad $name:$st";; esac
 done < "$OUT/containers.txt"
 chk "$n easyengine containers up on the img-versions.json tags" "${bad:-ok}" eq "$bad" ""
-for c in services_global-nginx-proxy_1 services_global-db_1 services_global-redis_1 services_global-cron_1 freshwptest-nginx-1 freshwptest-php-1 freshphptest-php-1; do
+for c in services_global-nginx-proxy_1 services_global-db_1 services_global-redis_1 services_global-cron_1 fresh-wptest-nginx-1 fresh-wptest-php-1 fresh-phptest-php-1; do
   info "image $c: $(docker inspect -f '{{.Config.Image}} {{.State.Status}}' $c 2>&1)"; done
 
 # --- DB
