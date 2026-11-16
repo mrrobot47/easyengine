@@ -5,7 +5,7 @@
 rm -f /tmp/f4-stop-probe
 bash $F/state.sh $D/before; bash $F/matrix.sh > $D/matrix-before.txt
 for s in $ALL; do echo "$s $(stat -c %s /opt/easyengine/sites/$s/logs/nginx/error.log 2>/dev/null || echo 0)"; done > $D/errlog-offsets-before.txt
-off=$(stat -c %s $EE_LOG)
+mark=$(eelog_mark)
 docker events --format '{{.TimeNano}} {{.Type}} {{.Action}} {{.Actor.Attributes.name}} {{.Actor.Attributes.image}}' > $D/docker-events.txt 2>&1 & EP=$!
 bash $F/probe.sh $D/probe.txt & PP=$!
 bash $F/wildpoll.sh $D/wildpoll.txt & WP=$!
@@ -31,7 +31,7 @@ if [ "$MODE" = block ]; then cp -p $D/hosts.before-block /etc/hosts; cmp -s /etc
 for s in $ALL; do echo "$s $(stat -c %s /opt/easyengine/sites/$s/logs/nginx/error.log 2>/dev/null || echo 0)"; done > $D/errlog-offsets-end.txt
 sleep 15; touch /tmp/f4-stop-probe; wait $PP $WP $XP 2>/dev/null; kill $EP 2>/dev/null
 # This run's ee.log (logrotate may rotate it during the run).
-if [ $(stat -c %s $EE_LOG) -lt $off ]; then tail -c +$((off+1)) $EE_LOG.1; cat $EE_LOG; else tail -c +$((off+1)) $EE_LOG; fi > $D/ee.log.part
+eelog_since "$mark" > $D/ee.log.part
 for s in $ALL; do f=/opt/easyengine/sites/$s/logs/nginx/error.log; o=$(awk -v s=$s '$1==s{print $2}' $D/errlog-offsets-before.txt); e=$(awk -v s=$s '$1==s{print $2}' $D/errlog-offsets-end.txt)
   echo "$s $(tail -c +$((o+1)) $f 2>/dev/null | head -c $((e-o)) | grep -c 'No route to host')"; done > $D/noroute-during.txt
 bash $F/state.sh $D/after; bash $F/matrix.sh > $D/matrix-after.txt

@@ -2,9 +2,9 @@
 # Re-runs after the upgrade: plain commands, then two nightly-style runs (options.version reset, so the whole migration pipeline runs again). Usage: reruns.sh <dir> <label>
 . "$(dirname "$0")/lib.sh"; D=$1; L=$2; mkdir -p $D; cd /tmp
 bash $F/state.sh $D/before; : > $D/ee.log.part; : > $D/cmds.txt
-run() { local sz=$(stat -c %s $EE_LOG) s=$(date +%s.%N); ee "$@" > /dev/null 2> $D/err.txt; local rc=$?
+run() { local mk=$(eelog_mark) s=$(date +%s.%N); ee "$@" > /dev/null 2> $D/err.txt; local rc=$?
   echo "ee $* rc=$rc $(awk "BEGIN{printf \"%.1f\", $(date +%s.%N) - $s}")s stderr=$(head -c 150 $D/err.txt | tr '\n' ' ')" >> $D/cmds.txt
-  if [ $(stat -c %s $EE_LOG) -lt $sz ]; then tail -c +$((sz+1)) $EE_LOG.1; cat $EE_LOG; else tail -c +$((sz+1)) $EE_LOG; fi >> $D/ee.log.part; return $rc; }
+  eelog_since "$mk" >> $D/ee.log.part; return $rc; }
 bad=0
 for c in "cli info" "site list" "site info f4-ms.test" "auth list f4-ms.test" "cli info"; do run $c || bad=1; done
 for i in 1 2; do db "update options set value='${NEW_VERSION}-nightly-rerun$i' where key='version'"; run cli info || bad=1

@@ -28,7 +28,7 @@ hestia)
   chk "$L: site create wp: rc, http, no undefined-function" "0 200 0" "$r $(lcode f4-hes.test /) $(grep -c 'Call to undefined function' "$O/cmds.txt")"
   info "$L: debug lines about signals/pcntl in site create: $(grep -iE 'pcntl|signal' "$O/last.out" | head -3 | tr '\n' ' ' | cut -c1-300)"
   e site update f4-hes.test --ssl=self; chk "$L: site update --ssl=self" 0 "$?"
-  e site update f4-hes.test --php=8.4; chk "$L: site update --php=8.4" 0 "$?"
+  e site update f4-hes.test --php=8.3; chk "$L: site update --php=8.3 (from the default 8.4)" 0 "$?"
   e site disable f4-hes.test; r1=$?; e site enable f4-hes.test; r2=$?; chk "$L: site disable/enable" "0 0" "$r1 $r2"
   e site delete f4-hes.test --yes; chk "$L: site delete" 0 "$?"
   chk "$L: no 'Call to undefined function' in any command" 0 "$(grep -c 'Call to undefined function' "$O/cmds.txt")"
@@ -45,12 +45,12 @@ reqfn)
   info "$L: refusal: $(head -c 500 "$O/last.out" | tr '\n' ' ')"
   chk "$L: still $OLD_VERSION, no new rows after the refusal" "$OLD_VERSION 0 0 0" "$(ver) $(rows_once)"
   chk "$L: sites still serve" ok "$(sites200)"
-  rm -f $INI; off=$(stat -c %s $EE_LOG)
+  rm -f $INI; mk=$(eelog_mark)
   e site list; r=$?
-  tail -c +$((off+1)) $EE_LOG > "$O/fix-ee.log.part" 2>/dev/null
+  eelog_since "$mk" > "$O/fix-ee.log.part"
   chk "$L: after the fix: site list rc, version, rows once, no duplicate rows" "0 $NEW_VERSION 1 1 1 0" "$r $(ver) $(rows_once) $(db "select count(*) from (select migration from migrations group by migration having count(*) > 1)")"
   chk "$L: the migration ran once (image migration step)" 1 "$(grep -c 'Executing ee-docker-image-migrations' "$O/fix-ee.log.part")"
-  e site list; chk "$L: next command: no re-migration" "0 0" "$? $(tail -c +$((off+1)) $EE_LOG | grep -c 'Executing ee-docker-image-migrations' | awk '{print $1-1}')"
+  mk=$(eelog_mark); e site list; r=$?; chk "$L: next command: no re-migration" "0 0" "$r $(eelog_since "$mk" | grep -c 'Executing ee-')"
   sleep 5; chk "$L: sites serve after the deferred migration" ok "$(sites200)"
   info "$L: images in use after: $(docker ps --format '{{.Image}}' | grep easyengine/ | sort -u | tr '\n' ' ')" ;;
 *) echo "unknown mode"; exit 2 ;;
