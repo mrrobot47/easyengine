@@ -1,14 +1,14 @@
-# PRE-RELEASE LANE A for v4.14.0 (QA CI-05, CI-06 failpull/faillate, CI-09 php74 part): upgrade a populated install of stable 4.13.3 to the release phar.
+# QA CI-09 variants (HestiaCP CLI disable_functions; required functions disabled -> deferred migration) of the v4.14.0 lane A: upgrade a populated install of stable 4.13.3 to the release phar.
 # Phar under test: built here from CORE_REPO@CORE_SHA (release PR #1962 head) with the tag job's commands (composer install --no-dev from the committed lock, make-phar.php);
 # its extracted file hashes are compared with the locally built step-0 phar (md5 8f989f63..., .github/final4140/local-phar-files.sha256).
 # Jobs: main on ubuntu-24.04 and ubuntu-latest (26.04), failpull (Docker Hub blocked, then retry), faillate (2.20.0 docker-compose wrapper + immutable backup
 # make ee-update-docker-compose throw, then retry), php74 (host whose only PHP is 7.4). Derived from testing/ci-workflows/upgrade-4131.yml + upgrade-int-all.yml.
-name: Final v4.14.0 upgrade
+name: Final v4.14.0 upgrade variants
 
 on:
   push:
     branches:
-      - 'tmp/final-4140-upgrade'
+      - 'tmp/final-4140-variants'
   workflow_dispatch:
 
 permissions:
@@ -95,11 +95,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { scenario: main, os: ubuntu-24.04 }
-          - { scenario: main, os: ubuntu-latest }
-          - { scenario: failpull, os: ubuntu-latest }
-          - { scenario: faillate, os: ubuntu-24.04 }
-          - { scenario: php74, os: ubuntu-24.04 }
+          - { scenario: hestia, os: ubuntu-24.04 }
+          - { scenario: reqfn, os: ubuntu-24.04 }
     env:
       GLOBAL_AUTH: ${{ (matrix.scenario == 'main' || matrix.scenario == 'php74') && '1' || '0' }}
       RUN_PHP: '8.3'
@@ -195,86 +192,8 @@ jobs:
           for c in $(docker ps --format '{{.Names}}' | grep -- '-php-1$' | sort); do echo "$c $(docker inspect -f '{{.Config.Image}}' "$c") $(docker exec "$c" php -r 'echo PHP_VERSION;')"; done | tee "$B/php-versions.txt"
           cut -f2 "$B/state/containers.txt" | sort -u | tee "$B/images-in-use.txt"
 
-      # ---------------- main / php74: successful upgrade + everything after it ----------------
-      - name: "upgrade with the phar under test"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: |
-          $S bash "$SCRIPTS/upgrade.sh" "$OUT/upgrade" "$RUNNER_TEMP/new/easyengine.phar"
-          cat "$OUT/upgrade/cliinfo.out" || true
-          $S bash "$SCRIPTS/an.sh" "$OUT/upgrade" success upgrade
-      - name: "php74: the stub installed PHP 8.4 next to 7.4"
-        if: matrix.scenario == 'php74'
-        run: |
-          ls /usr/bin/php* | tee "$OUT/php-binaries-after.txt"
-          php -v | head -1 | tee "$OUT/default-php-after.txt"
-          sudo ee cli info | tee "$OUT/cli-info-after.txt"
-          r() { echo "$1 | php74: $2 | $3" >> "$RES"; }
-          ls /usr/bin/php8.* >/dev/null 2>&1 && r INFO "a PHP 8 binary was installed" "$(ls /usr/bin/php8.* | tr '\n' ' ')" || r INFO "no PHP 8 binary installed" none
-          php -v | grep -q 'PHP 7.4' && r PASS "default php still 7.4" ok || r FAIL "default php still 7.4" "$(php -v | head -1)"
-          grep -q "$NEW_VERSION" "$OUT/cli-info-after.txt" && r PASS "ee cli info shows $NEW_VERSION" ok || r FAIL "ee cli info shows $NEW_VERSION" "$(grep -i version "$OUT/cli-info-after.txt" | tr '\n' ' ')"
-          n=$(cat "$OUT/upgrade/cliinfo.out" "$OUT/upgrade/cliinfo.err" "$OUT/cli-info-after.txt" | grep -ciE 'deprecated'); [ "$n" = 0 ] && r PASS "no Deprecated lines on PHP 7.4" 0 || r FAIL "no Deprecated lines on PHP 7.4" "$n"
-      - name: "4.14.0 checks (rows, db kept, pulls, prune, sid, upload progress, host log cap, disabled site, stopped cron)"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: $S bash "$SCRIPTS/checks.sh" post-upgrade upgraded "$OUT/upgrade"
-      - name: "dead-peer measurement"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: $S bash "$SCRIPTS/measure.sh" "$OUT/measure" 12 measure
-      - name: "matrix with global auth on"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: $S bash "$SCRIPTS/post.sh" post-global 1 "$OUT/baseline/content.txt"
-      - name: "global auth off, matrix + whitelist"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: |
-          sudo ee auth delete global --user=g || true; sudo ee auth delete global || true; sleep 3
-          sudo ee auth list global 2>&1 | tee "$OUT/auth-global-after-delete.txt" || true
-          $S bash "$SCRIPTS/post.sh" post-noglobal 0 "$OUT/baseline/content.txt" whitelist
-      - name: "4.14.0 CLI checks (enable the disabled site, cron service enable/refresh)"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: $S bash "$SCRIPTS/checks.sh" post-upgrade-cli cli
-      - name: "ee site create of each type"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: $S bash "$SCRIPTS/create-delete.sh" create
-      - name: "re-runs (plain and nightly-style)"
-        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
-        run: |
-          $S bash "$SCRIPTS/reruns.sh" "$OUT/reruns" reruns
-          for s in f4-ms.test f4-wp.test f4-php.test f4-p83.test f4-p84.test f4-html.test shop.f4-ms.test; do echo "$s $(curl -s -o /dev/null -w '%{http_code}' --resolve "$s:80:127.0.0.1" "http://$s/f4-marker.txt")"; done | tee "$OUT/http-after-reruns.txt"
-          [ "$(grep -vc ' 200$' "$OUT/http-after-reruns.txt")" = 0 ] && echo "PASS | reruns: sites 200 after the re-runs | ok" >> "$RES" || echo "FAIL | reruns: sites 200 after the re-runs | $(tr '\n' ' ' < "$OUT/http-after-reruns.txt")" >> "$RES"
-
-      # ---------------- failpull: Docker Hub blocked, then retry ----------------
-      - name: "failpull: upgrade with Docker Hub blocked"
-        if: matrix.scenario == 'failpull'
-        run: |
-          $S bash "$SCRIPTS/upgrade.sh" "$OUT/fail" "$RUNNER_TEMP/new/easyengine.phar" block
-          $S bash "$SCRIPTS/an.sh" "$OUT/fail" failpull failpull
-          $S bash "$SCRIPTS/checks.sh" failpull failed
-      - name: "failpull: retry"
-        if: matrix.scenario == 'failpull'
-        run: |
-          $S bash "$SCRIPTS/upgrade.sh" "$OUT/retry" "$RUNNER_TEMP/new/easyengine.phar"
-          $S bash "$SCRIPTS/an.sh" "$OUT/retry" success failpull-retry
-          $S bash "$SCRIPTS/checks.sh" failpull-retry upgraded "$OUT/retry"
-          $S bash "$SCRIPTS/measure.sh" "$OUT/retry-measure" 6 failpull-retry-measure
-          $S bash "$SCRIPTS/post.sh" failpull-retry 0 "$OUT/baseline/content.txt"
-
-      # ---------------- faillate: failure after the image migration, then retry ----------------
-      - name: "faillate: upgrade that fails in ee-update-docker-compose"
-        if: matrix.scenario == 'faillate'
-        run: |
-          sudo bash "$SCRIPTS/fault.sh" arm | tee "$OUT/fault-arm.txt"
-          $S bash "$SCRIPTS/upgrade.sh" "$OUT/fail" "$RUNNER_TEMP/new/easyengine.phar"
-          sudo cat /var/tmp/f4-fault-fired.txt | tee "$OUT/fault-fired.txt" || true
-          $S bash "$SCRIPTS/an.sh" "$OUT/fail" faillate faillate
-          $S bash "$SCRIPTS/checks.sh" faillate failed
-          $S bash "$SCRIPTS/measure.sh" "$OUT/fail-measure" 6 faillate-measure
-          $S bash "$SCRIPTS/post.sh" faillate 0 "$OUT/baseline/content.txt"
-      - name: "faillate: retry"
-        if: matrix.scenario == 'faillate'
-        run: |
-          sudo bash "$SCRIPTS/fault.sh" off | tee "$OUT/fault-off.txt"
-          $S bash "$SCRIPTS/upgrade.sh" "$OUT/retry" "$RUNNER_TEMP/new/easyengine.phar"
-          $S bash "$SCRIPTS/an.sh" "$OUT/retry" noop faillate-retry
-          $S bash "$SCRIPTS/post.sh" faillate-retry 0 "$OUT/baseline/content.txt"
+      - name: "variant: ${{ matrix.scenario }}"
+        run: $S bash "$SCRIPTS/variant.sh" "${{ matrix.scenario }}" "$RUNNER_TEMP/new/easyengine.phar"
 
       - name: Collect and summarise
         if: always()
