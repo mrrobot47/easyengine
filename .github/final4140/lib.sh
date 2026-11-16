@@ -31,3 +31,9 @@ eelog_count() { zgrep -h -- "$1" /opt/easyengine/logs/ee.log* 2>/dev/null | wc -
 # chk <label> <expected-regex> <actual>; appends to $RES.
 chk() { local r=FAIL; [[ "$3" =~ ^($2)$ ]] && r=PASS; echo "$r | $1 | exp $2 | got $3" | tee -a "${RES:-/dev/null}"; }
 info() { echo "INFO | $*" | tee -a "${RES:-/dev/null}"; }
+# ee.log since a mark taken with eelog_mark: follows a rename rotation (ee-setup-logrotate force-rotates at the end of a migration run, and ee.log may not exist again until the next ee call).
+eelog_mark() { echo "$(stat -c %i $EE_LOG 2>/dev/null || echo 0) $(stat -c %s $EE_LOG 2>/dev/null || echo 0)"; }
+eelog_since() { local ino=${1%% *} off=${1##* } f
+  if [ "$(stat -c %i $EE_LOG 2>/dev/null)" = "$ino" ]; then tail -c +$((off+1)) $EE_LOG; return; fi
+  for f in $EE_LOG.1 $EE_LOG.2; do [ "$(stat -c %i $f 2>/dev/null)" = "$ino" ] && { tail -c +$((off+1)) $f; [ $f = $EE_LOG.2 ] && cat $EE_LOG.1; cat $EE_LOG 2>/dev/null; return; }; done
+  cat $EE_LOG 2>/dev/null; }

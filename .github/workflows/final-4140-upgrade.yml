@@ -212,7 +212,7 @@ jobs:
           ls /usr/bin/php8.* >/dev/null 2>&1 && r INFO "a PHP 8 binary was installed" "$(ls /usr/bin/php8.* | tr '\n' ' ')" || r INFO "no PHP 8 binary installed" none
           php -v | grep -q 'PHP 7.4' && r PASS "default php still 7.4" ok || r FAIL "default php still 7.4" "$(php -v | head -1)"
           grep -q "$NEW_VERSION" "$OUT/cli-info-after.txt" && r PASS "ee cli info shows $NEW_VERSION" ok || r FAIL "ee cli info shows $NEW_VERSION" "$(grep -i version "$OUT/cli-info-after.txt" | tr '\n' ' ')"
-          n=$(cat "$OUT/upgrade/cliinfo.out" "$OUT/upgrade/cliinfo.err" "$OUT/cli-info-after.txt" | grep -ciE 'deprecated'); [ "$n" = 0 ] && r PASS "no Deprecated lines on PHP 7.4" 0 || r FAIL "no Deprecated lines on PHP 7.4" "$n"
+          n=$(cat "$OUT/upgrade/cliinfo.out" "$OUT/upgrade/cliinfo.err" "$OUT/cli-info-after.txt" | grep -ciE 'deprecated' || true); [ "$n" = 0 ] && r PASS "no Deprecated lines on PHP 7.4" 0 || r FAIL "no Deprecated lines on PHP 7.4" "$n"
       - name: "4.14.0 checks (rows, db kept, pulls, prune, sid, upload progress, host log cap, disabled site, stopped cron)"
         if: matrix.scenario == 'main' || matrix.scenario == 'php74'
         run: $S bash "$SCRIPTS/checks.sh" post-upgrade upgraded "$OUT/upgrade"

@@ -25,7 +25,8 @@ logrotate_checks() {
     local st=$(grep -cE '^[^#]*\{' $f) ms=$(grep -cE '^\s*maxsize 2G' $f)
     chk "$L: $f: every stanza has maxsize 2G (stanzas, maxsize lines)" "$st $st" "$st $ms"
     chk "$L: $f: original saved in .backup/logrotate" "[1-9][0-9]*" "$(ls /opt/easyengine/.backup/logrotate/ 2>/dev/null | grep -c "$(basename $f)")"
-    logrotate -d $f > "$O/logrotate-d-$(basename $f).txt" 2>&1; chk "$L: logrotate -d $f has no error" 0 "$(grep -ciE '^error' "$O/logrotate-d-$(basename $f).txt")"
+    # Standalone -d lacks logrotate.conf's `su root syslog`, so the runner's group-writable /var/log gives "insecure permissions" errors before and after.
+    logrotate -d $f > "$O/logrotate-d-$(basename $f).txt" 2>&1; chk "$L: logrotate -d $f has no error (other than insecure /var/log permissions)" 0 "$(grep -iE '^error' "$O/logrotate-d-$(basename $f).txt" | grep -vc 'insecure permissions')"
   done
   if systemctl cat logrotate.timer >/dev/null 2>&1; then
     chk "$L: logrotate.timer hourly drop-in" "present hourly" "$([ -f /etc/systemd/system/logrotate.timer.d/hourly.conf ] && echo present || echo absent) $(grep -oE 'OnCalendar=hourly' /etc/systemd/system/logrotate.timer.d/hourly.conf 2>/dev/null | head -1 | cut -d= -f2)"
@@ -59,6 +60,7 @@ upload_checks() {
   # Through FPM: the php site serves a probe.
   echo '<?php echo var_export(ini_get("session.upload_progress.enabled"), true);' > /opt/easyengine/sites/f4-p85.test/app/htdocs/f4-up.php; chmod 644 /opt/easyengine/sites/f4-p85.test/app/htdocs/f4-up.php
   chk "$L: f4-p85.test FPM ini_get(session.upload_progress.enabled)" "''|'0'|false" "$(curl -s -m 20 --resolve f4-p85.test:80:127.0.0.1 http://f4-p85.test/f4-up.php)"
+  rm -f /opt/easyengine/sites/f4-p85.test/app/htdocs/f4-up.php
 }
 
 case $MODE in
@@ -75,8 +77,8 @@ upgraded)
   cut -f1 $D/before/images.txt | sort > "$O/img-before.txt"; cut -f1 $D/after/images.txt | sort > "$O/img-after.txt"
   comm -23 "$O/img-before.txt" "$O/img-after.txt" > "$O/img-removed.txt"; comm -13 "$O/img-before.txt" "$O/img-after.txt" > "$O/img-added.txt"
   info "$L: images removed: $(tr '\n' ' ' < "$O/img-removed.txt")"; info "$L: images added: $(tr '\n' ' ' < "$O/img-added.txt")"
-  cut -f2 $D/before/containers.txt | sort -u > "$O/img-used-before.txt"
-  chk "$L: removed images were all easyengine/* and unused by any container" "0 0" "$(grep -vc '^easyengine/' "$O/img-removed.txt") $(comm -12 "$O/img-removed.txt" "$O/img-used-before.txt" | wc -l)"
+  cut -f2 $D/after/containers.txt | sort -u > "$O/img-used-after.txt"
+  chk "$L: removed images were all easyengine/* and no remaining container (any state) uses one" "0 0" "$(grep -vc '^easyengine/' "$O/img-removed.txt") $(comm -12 "$O/img-removed.txt" "$O/img-used-after.txt" | wc -l)"
   miss=""; while IFS=$'\t' read -r n i _; do docker image inspect "$i" >/dev/null 2>&1 || miss="$miss $n=$i"; done < $D/after/containers.txt
   chk "$L: every container's image still present" ok "${miss:-ok}"
   sid_checks; upload_checks; logrotate_checks

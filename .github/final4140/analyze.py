@@ -280,7 +280,9 @@ info("timing: " + " ".join(rd("cmd.txt").split()))
 if mode == "success":
     chk("ee version after", new_v == version and ee_md5 == env["NEW_MD5"], f"options.version={version} ee md5={ee_md5}")
     newrows = sorted(mig_after - mig_before)
-    chk("new migration rows = the migrations new in the phar", newrows == new_names, ",".join(newrows) or "none")
+    # A failed earlier run (failpull) keeps its db migration rows (no undo), so only the rest is new here.
+    want_rows = sorted(set(new_names) - mig_before)
+    chk("new migration rows = the migrations new in the phar (minus rows a failed earlier run kept)", newrows == want_rows and set(new_names) <= mig_after, ",".join(newrows) or "none")
     chk("every migration ran exactly once", (not new_names and not migrating) or (bool(migrating) and max(migrating.values()) == 1 and set(migrating) == set(newrows)), dict(migrating))
     no_wildcard_staging()
     proxy_checks()
