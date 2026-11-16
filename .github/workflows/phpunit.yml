@@ -1,0 +1,103 @@
+# Core PHPUnit layer (tests/phpunit). Fast gate (no Docker): test_and_build.yml can call it (`uses: ./.github/workflows/phpunit.yml`) and `needs:` it.
+name: PHPUnit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - 'tmp/**'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phpunit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phpunit:
+    name: PHPUnit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.5']
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer
+          extensions: pcntl, curl, sqlite3, pdo_sqlite, zip, dom, mbstring, json
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config -g cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Composer caching
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-phpunit-php${{ matrix.php }}-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-phpunit-php${{ matrix.php }}-
+
+      - name: Install dependencies
+        run: |
+          # Release check: the packages at the tags pinned in composer.lock.
+          cat VERSION
+          composer install --no-progress --no-interaction
+          composer show 'easyengine/*'
+
+      - name: Run PHPUnit
+        run: |
+          mkdir -p "$RUNNER_TEMP/phpunit"
+          php -d auto_prepend_file=tests/phpunit/prepend.php vendor/bin/phpunit --log-junit "$RUNNER_TEMP/phpunit/junit.xml"
+
+      # Tests pinning open bugs: expected to fail, never gating. A pass means the bug is fixed (drop the group) or the test is vacuous.
+      - name: Run known-bug tests
+        if: always()
+        run: |
+          php -d auto_prepend_file=tests/phpunit/prepend.php vendor/bin/phpunit --group known-bug --log-junit "$RUNNER_TEMP/phpunit/known-bug.xml" || true
+
+      - name: Summarise
+        if: always()
+        run: |
+          python3 - "$RUNNER_TEMP/phpunit" <<'PY'
+          import os, sys, xml.etree.ElementTree as ET
+          out, lines = sys.argv[1], []
+          for name in ('junit', 'known-bug'):
+              path = os.path.join(out, name + '.xml')
+              if not os.path.exists(path):
+                  print('::warning title=PHPUnit::no %s results' % name)
+                  continue
+              cases = list(ET.parse(path).getroot().iter('testcase'))
+              bad = [c for c in cases if c.find('failure') is not None or c.find('error') is not None]
+              skipped = [c for c in cases if c.find('skipped') is not None]
+              lines.append('%s: %d tests, %d failed, %d skipped' % (name, len(cases), len(bad), len(skipped)))
+              for c in (cases if name == 'known-bug' else []):
+                  if c not in bad and c not in skipped:
+                      title = '%s::%s' % (c.get('class'), c.get('name'))
+                      print('::warning title=known-bug passed::%s' % title)
+                      lines.append('- known-bug PASSED: `%s`' % title)
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          text = '### PHPUnit (PHP ${{ matrix.php }})\n\n' + '\n'.join(lines) + '\n'
+          print(text)
+          if summary:
+              open(summary, 'a').write(text)
+          PY
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: phpunit-php${{ matrix.php }}
+          path: ${{ runner.temp }}/phpunit
+          retention-days: 14
