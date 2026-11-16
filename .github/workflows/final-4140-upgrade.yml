@@ -75,7 +75,7 @@ jobs:
           (cd "$RUNNER_TEMP/x" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$O/phar-files.sha256"
           wc -l < "$O/phar-files.sha256"
           (cd "$O" && md5sum easyengine.phar > easyengine.phar.md5 && sha512sum easyengine.phar > easyengine.phar.sha512)
-          diff "wf/$SCRIPTS/local-phar-files.sha256" "$O/phar-files.sha256" > "$O/phar-files-vs-local.diff"; echo "diff rc=$?"
+          rc=0; diff "wf/$SCRIPTS/local-phar-files.sha256" "$O/phar-files.sha256" > "$O/phar-files-vs-local.diff" || rc=$?; echo "diff rc=$rc (files differing: $(grep -c '^>' "$O/phar-files-vs-local.diff"))"
           cat "$O/phar-files-vs-local.diff"
           cat "$O/build-info.txt" "$O/easyengine.phar.md5"
 
