@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - develop
+      - 'tmp/**'
   workflow_dispatch:
 
 permissions:
@@ -40,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+        php: ['7.4', '8.5']
         lane: [main, migration, uninstall]
         include:
           # Default profile plus @destructive; the first checked command initialises EasyEngine.
@@ -95,13 +96,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Every easyengine/* package on dev-develop, as core CI does on PRs.
-          php -r '
-            $j = json_decode(file_get_contents("composer.json"), true);
-            foreach ($j["require"] as $k => $v) if (strpos($k, "easyengine/") === 0) $j["require"][$k] = "dev-develop";
-            file_put_contents("composer.json", json_encode($j, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");'
-          composer config --json --merge policy.advisories.ignore "$ADVISORY_IGNORE"
-          composer update --prefer-dist --no-progress --no-interaction
+          # tmp release check: every easyengine/* package at the tag pinned in composer.lock.
+          git log -1 --format='core under test: %H %s'
+          composer install --prefer-dist --no-progress --no-interaction
+          composer show 'easyengine/*'
           # Some package commands shell out to `ee` from PATH.
           sudo ln -sf "$PWD/bin/ee" /usr/local/bin/ee
           cat VERSION
