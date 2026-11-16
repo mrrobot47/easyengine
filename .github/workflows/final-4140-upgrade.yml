@@ -1,0 +1,307 @@
+# PRE-RELEASE LANE A for v4.14.0 (QA CI-05, CI-06 failpull/faillate, CI-09 php74 part): upgrade a populated install of stable 4.13.3 to the release phar.
+# Phar under test: built here from CORE_REPO@CORE_SHA (release PR #1962 head) with the tag job's commands (composer install --no-dev from the committed lock, make-phar.php);
+# its extracted file hashes are compared with the locally built step-0 phar (md5 8f989f63..., .github/final4140/local-phar-files.sha256).
+# Jobs: main on ubuntu-24.04 and ubuntu-latest (26.04), failpull (Docker Hub blocked, then retry), faillate (2.20.0 docker-compose wrapper + immutable backup
+# make ee-update-docker-compose throw, then retry), php74 (host whose only PHP is 7.4). Derived from testing/ci-workflows/upgrade-4131.yml + upgrade-int-all.yml.
+name: Final v4.14.0 upgrade
+
+on:
+  push:
+    branches:
+      - 'tmp/final-4140-upgrade'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  OLD_VERSION: '4.13.3'
+  OLD_PHAR_URL: https://github.com/EasyEngine/easyengine/releases/download/v4.13.3/easyengine.phar
+  OLD_PHAR_MD5: 8ea5efde4cbc5fdbba019995e2429b0e
+  OLD_PHAR_SHA512: 083e0a199acf91b7848ec196047ccbd56b83a3715f3fbb9168edd03c761ed49e0bc9292fe8d022e2645a8b17ecc56d0a5d1be04804d2a6d8b5600a52800baed0
+  CORE_REPO: mrrobot47/easyengine
+  CORE_SHA: 5ca484f2d6909841692abc969ea18597f8bc4131
+  EXPECT_VERSION: '4\.14\.0'
+  EXPECT_CHANGED_IMAGES: easyengine/cron easyengine/newrelic-daemon easyengine/nginx easyengine/nginx-proxy easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5 easyengine/postfix easyengine/redis
+  EXPECT_NEW_MIGRATIONS: container/20261023193000_site-command_drop_deprecated_session_sid_settings.php container/20261023233000_site-command_recheck_session_upload_progress.php db/20261102100000_easyengine_cap_host_syslog.php
+  PHP_EXPECT: ''
+  SCRIPTS: .github/final4140
+  COMPOSE_VERSION: v5.5.1
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+
+jobs:
+  build:
+    name: Build the release phar
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+
+      - name: Check out core at the release commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.CORE_REPO }}
+          ref: ${{ env.CORE_SHA }}
+          path: core
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:2.10.3
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Build the phar (tag branch of the tag job's steps)
+        working-directory: core
+        run: |
+          git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = "$CORE_SHA"
+          composer --version
+          composer install --no-dev --no-progress --no-interaction
+          cat VERSION
+          php -dphar.readonly=0 utils/make-phar.php easyengine.phar
+          php easyengine.phar cli version | tee "$RUNNER_TEMP/cli-version.txt"
+          grep -qx 'EE 4.14.0' "$RUNNER_TEMP/cli-version.txt"
+          mkdir -p "$RUNNER_TEMP/phar-out"; cp easyengine.phar "$RUNNER_TEMP/phar-out/"
+          { git rev-parse HEAD; composer --version; php -v | head -1; } > "$RUNNER_TEMP/phar-out/build-info.txt"
+
+      - name: Hash the phar contents and compare with the local step-0 phar
+        run: |
+          O=$RUNNER_TEMP/phar-out
+          php -r '$p = new Phar($argv[1]); $p->extractTo($argv[2]);' "$O/easyengine.phar" "$RUNNER_TEMP/x"
+          (cd "$RUNNER_TEMP/x" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$O/phar-files.sha256"
+          wc -l < "$O/phar-files.sha256"
+          (cd "$O" && md5sum easyengine.phar > easyengine.phar.md5 && sha512sum easyengine.phar > easyengine.phar.sha512)
+          diff "wf/$SCRIPTS/local-phar-files.sha256" "$O/phar-files.sha256" > "$O/phar-files-vs-local.diff"; echo "diff rc=$?"
+          cat "$O/phar-files-vs-local.diff"
+          cat "$O/build-info.txt" "$O/easyengine.phar.md5"
+
+      - name: Upload the phar and its hashes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-phar
+          path: ${{ runner.temp }}/phar-out
+          retention-days: 14
+
+  upgrade:
+    name: 4.13.3 -> 4.14.0 / ${{ matrix.scenario }} / ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { scenario: main, os: ubuntu-24.04 }
+          - { scenario: main, os: ubuntu-latest }
+          - { scenario: failpull, os: ubuntu-latest }
+          - { scenario: faillate, os: ubuntu-24.04 }
+          - { scenario: php74, os: ubuntu-24.04 }
+    env:
+      GLOBAL_AUTH: ${{ (matrix.scenario == 'main' || matrix.scenario == 'php74') && '1' || '0' }}
+      RUN_PHP: '8.3'
+    steps:
+      - name: Free disk space and set paths
+        run: |
+          cat /etc/os-release | head -3; uname -m
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "OUTDIR=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"
+          echo "RUNNER_IP=$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == "src") print $(i + 1)}')" >> "$GITHUB_ENV"
+          echo "S=sudo --preserve-env=RUNNER_IP,GLOBAL_AUTH,RES,OUTDIR,NEW_MD5,OLD_MD5,IMG_JSON,IMG_OLD_JSON,NEW_MIGS,NEW_VERSION,OLD_VERSION,PHP_EXPECT" >> "$GITHUB_ENV"
+          cp /etc/os-release "$OUT/os-release.txt"
+
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        if: matrix.scenario != 'php74'
+        with:
+          php-version: ${{ env.RUN_PHP }}
+          coverage: none
+          tools: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: "php74: leave PHP 7.4 as the only PHP"
+        if: matrix.scenario == 'php74'
+        run: |
+          sudo apt-get purge -y -qq 'php*' > "$OUT/apt-purge.log" 2>&1 || true
+          sudo apt-get autoremove -y -qq >/dev/null 2>&1 || true
+          sudo add-apt-repository -y ppa:ondrej/php >/dev/null 2>&1 || true
+          sudo apt-get update -qq >/dev/null 2>&1 || true
+          sudo apt-get install -y -qq php7.4-cli php7.4-curl php7.4-sqlite3 php7.4-zip php7.4-mbstring php7.4-xml > "$OUT/apt-php.log" 2>&1 || { tail -20 "$OUT/apt-php.log"; exit 1; }
+          php -v | head -1
+          ls /usr/bin/php* | tee "$OUT/php-binaries-before.txt"
+          test "$(ls /usr/bin/php8.* 2>/dev/null | wc -l)" = 0
+
+      - name: Prepare the host
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq >/dev/null
+          sudo curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker version --format 'docker {{.Server.Version}}'; docker-compose version
+          echo "runner IP: $RUNNER_IP; hostname -I: $(hostname -I)"
+          sudo grep secure_path /etc/sudoers || true
+          ls -la /etc/logrotate.d/ | tee "$OUT/logrotate-d-before.txt"; systemctl cat logrotate.timer > "$OUT/logrotate-timer-before.txt" 2>&1 || true
+          : > "$RES"; sudo chmod 666 "$RES"
+
+      - name: Get the phar under test
+        uses: actions/download-artifact@v8
+        with:
+          name: release-phar
+          path: ${{ runner.temp }}/new
+
+      - name: Get the 4.13.3 phar and record both
+        run: |
+          curl -fsSL --retry 5 "$OLD_PHAR_URL" -o "$RUNNER_TEMP/ee-old.phar"
+          echo "$OLD_PHAR_MD5  $RUNNER_TEMP/ee-old.phar" | md5sum -c -
+          echo "$OLD_PHAR_SHA512  $RUNNER_TEMP/ee-old.phar" | sha512sum -c -
+          cat "$RUNNER_TEMP/new/easyengine.phar.md5" "$RUNNER_TEMP/new/build-info.txt"
+          php "$RUNNER_TEMP/new/easyengine.phar" cli version
+          bash "$SCRIPTS/record.sh" "$RUNNER_TEMP/new/easyengine.phar" "$RUNNER_TEMP/ee-old.phar"
+
+      - name: Install EasyEngine 4.13.3
+        run: |
+          sudo install -m 0755 "$RUNNER_TEMP/ee-old.phar" /usr/local/bin/ee
+          sudo ee cli info | tee "$OUT/cli-info-old.txt"
+          docker-compose version || {
+            sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose; }
+          docker-compose version | tee "$OUT/compose-after-old-install.txt"
+          docker pull -q alpine:3; docker run -d --name f4-event-dummy alpine:3 sleep infinity
+
+      - name: Build the 4.13.3 population
+        run: |
+          start=$(date +%s)
+          $S bash "$SCRIPTS/populate.sh" 2>&1 | tee "$OUT/populate.log" | grep -E '^(RC=|CREATE-FAIL|population|pdb page)'
+          echo "population: $(( $(date +%s) - start )) s" | tee "$OUT/populate-seconds.txt"
+          ! grep -q CREATE-FAIL "$OUT/populate.log"
+
+      - name: Seed the states 4.14.0 acts on (disabled site, stopped cron) on 4.13.3
+        run: $S bash "$SCRIPTS/seed.sh" 2>&1 | tee "$OUT/seed.log"
+
+      - name: Baseline on 4.13.3
+        run: |
+          B=$OUT/baseline; mkdir -p "$B"
+          $S bash "$SCRIPTS/state.sh" "$B/state"
+          $S bash "$SCRIPTS/matrix.sh" | tee "$B/matrix.txt"
+          $S bash "$SCRIPTS/content.sh" "$B/content.txt"; cat "$B/content.txt"
+          sudo ee site list | tee "$B/site-list.txt"
+          for c in $(docker ps --format '{{.Names}}' | grep -- '-php-1$' | sort); do echo "$c $(docker inspect -f '{{.Config.Image}}' "$c") $(docker exec "$c" php -r 'echo PHP_VERSION;')"; done | tee "$B/php-versions.txt"
+          cut -f2 "$B/state/containers.txt" | sort -u | tee "$B/images-in-use.txt"
+
+      # ---------------- main / php74: successful upgrade + everything after it ----------------
+      - name: "upgrade with the phar under test"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: |
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/upgrade" "$RUNNER_TEMP/new/easyengine.phar"
+          cat "$OUT/upgrade/cliinfo.out" || true
+          $S bash "$SCRIPTS/an.sh" "$OUT/upgrade" success upgrade
+      - name: "php74: the stub installed PHP 8.4 next to 7.4"
+        if: matrix.scenario == 'php74'
+        run: |
+          ls /usr/bin/php* | tee "$OUT/php-binaries-after.txt"
+          php -v | head -1 | tee "$OUT/default-php-after.txt"
+          sudo ee cli info | tee "$OUT/cli-info-after.txt"
+          r() { echo "$1 | php74: $2 | $3" >> "$RES"; }
+          ls /usr/bin/php8.* >/dev/null 2>&1 && r INFO "a PHP 8 binary was installed" "$(ls /usr/bin/php8.* | tr '\n' ' ')" || r INFO "no PHP 8 binary installed" none
+          php -v | grep -q 'PHP 7.4' && r PASS "default php still 7.4" ok || r FAIL "default php still 7.4" "$(php -v | head -1)"
+          grep -q "$NEW_VERSION" "$OUT/cli-info-after.txt" && r PASS "ee cli info shows $NEW_VERSION" ok || r FAIL "ee cli info shows $NEW_VERSION" "$(grep -i version "$OUT/cli-info-after.txt" | tr '\n' ' ')"
+          n=$(cat "$OUT/upgrade/cliinfo.out" "$OUT/upgrade/cliinfo.err" "$OUT/cli-info-after.txt" | grep -ciE 'deprecated'); [ "$n" = 0 ] && r PASS "no Deprecated lines on PHP 7.4" 0 || r FAIL "no Deprecated lines on PHP 7.4" "$n"
+      - name: "4.14.0 checks (rows, db kept, pulls, prune, sid, upload progress, host log cap, disabled site, stopped cron)"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: $S bash "$SCRIPTS/checks.sh" post-upgrade upgraded "$OUT/upgrade"
+      - name: "dead-peer measurement"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: $S bash "$SCRIPTS/measure.sh" "$OUT/measure" 12 measure
+      - name: "matrix with global auth on"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: $S bash "$SCRIPTS/post.sh" post-global 1 "$OUT/baseline/content.txt"
+      - name: "global auth off, matrix + whitelist"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: |
+          sudo ee auth delete global --user=g || true; sudo ee auth delete global || true; sleep 3
+          sudo ee auth list global 2>&1 | tee "$OUT/auth-global-after-delete.txt" || true
+          $S bash "$SCRIPTS/post.sh" post-noglobal 0 "$OUT/baseline/content.txt" whitelist
+      - name: "4.14.0 CLI checks (enable the disabled site, cron service enable/refresh)"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: $S bash "$SCRIPTS/checks.sh" post-upgrade-cli cli
+      - name: "ee site create of each type"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: $S bash "$SCRIPTS/create-delete.sh" create
+      - name: "re-runs (plain and nightly-style)"
+        if: matrix.scenario == 'main' || matrix.scenario == 'php74'
+        run: |
+          $S bash "$SCRIPTS/reruns.sh" "$OUT/reruns" reruns
+          for s in f4-ms.test f4-wp.test f4-php.test f4-p83.test f4-p84.test f4-html.test shop.f4-ms.test; do echo "$s $(curl -s -o /dev/null -w '%{http_code}' --resolve "$s:80:127.0.0.1" "http://$s/f4-marker.txt")"; done | tee "$OUT/http-after-reruns.txt"
+          [ "$(grep -vc ' 200$' "$OUT/http-after-reruns.txt")" = 0 ] && echo "PASS | reruns: sites 200 after the re-runs | ok" >> "$RES" || echo "FAIL | reruns: sites 200 after the re-runs | $(tr '\n' ' ' < "$OUT/http-after-reruns.txt")" >> "$RES"
+
+      # ---------------- failpull: Docker Hub blocked, then retry ----------------
+      - name: "failpull: upgrade with Docker Hub blocked"
+        if: matrix.scenario == 'failpull'
+        run: |
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/fail" "$RUNNER_TEMP/new/easyengine.phar" block
+          $S bash "$SCRIPTS/an.sh" "$OUT/fail" failpull failpull
+          $S bash "$SCRIPTS/checks.sh" failpull failed
+      - name: "failpull: retry"
+        if: matrix.scenario == 'failpull'
+        run: |
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/retry" "$RUNNER_TEMP/new/easyengine.phar"
+          $S bash "$SCRIPTS/an.sh" "$OUT/retry" success failpull-retry
+          $S bash "$SCRIPTS/checks.sh" failpull-retry upgraded "$OUT/retry"
+          $S bash "$SCRIPTS/measure.sh" "$OUT/retry-measure" 6 failpull-retry-measure
+          $S bash "$SCRIPTS/post.sh" failpull-retry 0 "$OUT/baseline/content.txt"
+
+      # ---------------- faillate: failure after the image migration, then retry ----------------
+      - name: "faillate: upgrade that fails in ee-update-docker-compose"
+        if: matrix.scenario == 'faillate'
+        run: |
+          sudo bash "$SCRIPTS/fault.sh" arm | tee "$OUT/fault-arm.txt"
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/fail" "$RUNNER_TEMP/new/easyengine.phar"
+          sudo cat /var/tmp/f4-fault-fired.txt | tee "$OUT/fault-fired.txt" || true
+          $S bash "$SCRIPTS/an.sh" "$OUT/fail" faillate faillate
+          $S bash "$SCRIPTS/checks.sh" faillate failed
+          $S bash "$SCRIPTS/measure.sh" "$OUT/fail-measure" 6 faillate-measure
+          $S bash "$SCRIPTS/post.sh" faillate 0 "$OUT/baseline/content.txt"
+      - name: "faillate: retry"
+        if: matrix.scenario == 'faillate'
+        run: |
+          sudo bash "$SCRIPTS/fault.sh" off | tee "$OUT/fault-off.txt"
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/retry" "$RUNNER_TEMP/new/easyengine.phar"
+          $S bash "$SCRIPTS/an.sh" "$OUT/retry" noop faillate-retry
+          $S bash "$SCRIPTS/post.sh" faillate-retry 0 "$OUT/baseline/content.txt"
+
+      - name: Collect and summarise
+        if: always()
+        run: |
+          set +e
+          touch /tmp/f4-stop-probe 2>/dev/null
+          sudo sh -c 'cp /opt/easyengine/logs/ee.log* "$0"/' "$OUT" 2>/dev/null
+          for s in $(sudo ls /opt/easyengine/sites 2>/dev/null); do mkdir -p "$OUT/logs/$s"; sudo sh -c 'cp /opt/easyengine/sites/"$1"/logs/nginx/error.log* "$0"/' "$OUT/logs/$s" "$s" 2>/dev/null; done
+          sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$OUT/containers-final.txt"
+          sudo docker images --format '{{.Repository}}:{{.Tag}}\t{{.ID}}' | sort > "$OUT/images-final.txt"
+          sudo docker logs services_global-cron_1 > "$OUT/cron-scheduler.log" 2>&1
+          sudo sqlite3 /opt/easyengine/db/ee.sqlite "select id,migration,type from migrations order by id" > "$OUT/migrations-final.txt" 2>&1
+          sudo sh -c 'cp /etc/logrotate.d/rsyslog "$0"/rsyslog-final 2>/dev/null; cp -r /etc/systemd/system/logrotate.timer.d "$0"/ 2>/dev/null; cp /opt/easyengine/services/docker-compose.yml "$0"/services-compose-final.yml' "$OUT"
+          sudo chown -R "$USER" "$OUT"
+          {
+            echo "## ${{ matrix.scenario }} / ${{ matrix.os }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"
+            echo; echo '```'; grep '^FAIL' "$RES"; grep '^INFO' "$RES" | cut -c1-400; echo '```'
+          } > "$OUT/summary.md"
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/summary.md"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upgrade-${{ matrix.scenario }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+      - name: Fail on any FAIL check
+        run: "! grep -q '^FAIL' \"$RES\""
