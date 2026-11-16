@@ -1,0 +1,512 @@
+# v4.14.0 release QA (CI-06): the upgrade robustness E2E matrix (#1953 readiness gates + rollback, #1954 stopped services / disabled sites, interrupted recreate) re-pointed at the release commit.
+# Branch tmp/final-4140-robust on mrrobot47/easyengine = release/v4.14.0 5ca484f2 + this file + .github/e2e/img-versions-4.13.3.json.
+# Source: testing/ci-workflows/upgrade-robustness-pr-e2e.yml (green runs 40294319696, 40019379300 on the PR heads), `after` variant only.
+# The phar is built on the runner from this tree's committed lock (`composer install --no-dev`, as the tag job does), with fault injection:
+# img-versions.json = the 4.13.3 one with cron/redis/mariadb/nginx-proxy/nginx moved to local -e2e retags (a pull shim accepts them),
+# per-scenario bad images, and a one-shot EE::error() for eeerror/stoppedfail. So this tests the release CODE, not the release phar's
+# image set (the real 4.13.3 -> 4.14.0 image move is covered by the release-upgrade lane).
+name: Final v4.14.0 upgrade E2E (robustness)
+
+on:
+  push:
+    branches:
+      - 'tmp/final-4140-robust'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_VERSION: v5.5.1
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+  OLD_VERSION: 4.13.3
+  OLD_PHAR_URL: https://github.com/EasyEngine/easyengine/releases/download/v4.13.3/easyengine.phar
+  OLD_PHAR_SHA256: 13364d76ab4df809d9c70b080401df2b50ccca980c9044ffa9f56e6981a194ec
+  NEW_VERSION: 4.14.0
+  # Migrations new in 4.14.0 (timestamps): 2 site-command container migrations + the core db one (db migrations have no undo).
+  NEW_MIGS: 20261023193000 20261023233000 20261102100000
+  NEW_DB_MIGS: 20261102100000
+  OLD_PROXY: v4.13.0
+  OLD_REDIS: v4.13.1
+  OLD_DB: v4.9.1
+  OLD_CRON: v4.11.0
+  OLD_NGINX: v4.11.0
+  SITES: >-
+    html.test:--type=html
+    wp.test:--type=wp,--cache
+    php.test:--type=php
+  # stopped*: global-db killed, global-redis disabled, two disabled sites (created first, so they are migrated before php.test).
+  STOPPED_SITES: >-
+    html.test:--type=html
+    php.test:--type=php
+  OFF_SITES: >-
+    wpoff.test:--type=wp,--cache
+    phpoff.test:--type=php
+
+jobs:
+  upgrade:
+    name: ${{ matrix.scenario }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24.04 = the runner the PR-head runs were green on; one baseline also on ubuntu-latest (26.04, sudo-rs).
+        os: [ubuntu-24.04]
+        variant: [after]
+        scenario: [baseline, stop, crashloop, health, eeerror, interrupt, interruptfail, interruptgate, interruptproxy, hang, busyport, offline, badcompose, stopped, stoppedfail]
+        include:
+          - { variant: after, scenario: baseline, os: ubuntu-latest }
+
+    steps:
+      - name: Free disk space
+        run: |
+          echo "OUT=$RUNNER_TEMP/out" >> "$GITHUB_ENV"
+          case "${{ matrix.scenario }}" in
+            stopped*) echo "SITES_RUN=$(echo $STOPPED_SITES)" >> "$GITHUB_ENV"; echo "OFF_RUN=$(echo $OFF_SITES)" >> "$GITHUB_ENV" ;;
+            *) echo "SITES_RUN=$(echo $SITES)" >> "$GITHUB_ENV"; echo "OFF_RUN=" >> "$GITHUB_ENV" ;;
+          esac
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          mkdir -p "$RUNNER_TEMP/out"
+          df -h / | tail -1
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Prepare the host
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose version
+
+      - name: Select the code
+        run: |
+          git log -1 --format='%H %s' | tee "$OUT/source-commit.txt"
+          cat VERSION
+          # Image tags as 4.13.3 recorded them; only the -e2e retags below differ, so no real image pull is needed.
+          cp .github/e2e/img-versions-4.13.3.json img-versions.json
+          jq --arg p "$OLD_PROXY" --arg r "$OLD_REDIS" --arg d "$OLD_DB" --arg c "$OLD_CRON" --arg n "$OLD_NGINX" \
+            '."easyengine/nginx-proxy" = "\($p)-e2e" | ."easyengine/redis" = "\($r)-e2e" | ."easyengine/mariadb" = "\($d)-e2e" | ."easyengine/cron" = "\($c)-e2e" | ."easyengine/nginx" = "\($n)-e2e"' \
+            img-versions.json > img.tmp && mv img.tmp img-versions.json
+          case "${{ matrix.scenario }}" in
+            health) jq --arg r "$OLD_REDIS" '."easyengine/redis" = "\($r)-e2ebad"' img-versions.json > img.tmp && mv img.tmp img-versions.json ;;
+            hang) jq --arg r "$OLD_REDIS" '."easyengine/redis" = "\($r)-e2ehang"' img-versions.json > img.tmp && mv img.tmp img-versions.json ;;
+            crashloop|interruptfail|interruptgate) jq --arg d "$OLD_DB" '."easyengine/mariadb" = "\($d)-e2ecrash"' img-versions.json > img.tmp && mv img.tmp img-versions.json ;;
+            eeerror|stoppedfail)
+              # One-shot EE::error() at the start of php.test's upgrade step (the rollback's re-enable then works).
+              sed -i '/EE::debug( "Start enabling default containers of/a\		if ( '"'"'php.test'"'"' === $site_info['"'"'site_url'"'"'] \&\& @unlink( '"'"'/tmp/ee-e2e-eeerror'"'"' ) ) {\n\t\t\tEE::error( '"'"'e2e: injected failure while upgrading php.test'"'"' );\n\t\t}' php/EE/Migration/SiteContainers.php
+              grep -n -A3 'Start enabling default containers of' php/EE/Migration/SiteContainers.php
+              php -l php/EE/Migration/SiteContainers.php ;;
+          esac
+          cat img-versions.json
+
+      - name: Build the new phar
+        run: |
+          # The committed lock, as the release CI builds it.
+          composer install --prefer-dist --no-dev --no-progress --no-interaction
+          # The release's service-command (v1.6.3) already recreates a stopped service on `ee service enable` (#84).
+          grep -n "init_global_container( \$service, '', true )" vendor/easyengine/service-command/src/Service_Command.php
+          composer show 'easyengine/*' | tee "$OUT/packages.txt"
+          php -dphar.readonly=0 utils/make-phar.php "$RUNNER_TEMP/new.phar" --quiet
+          sha256sum "$RUNNER_TEMP/new.phar" | tee "$OUT/new-phar.txt"
+          php "$RUNNER_TEMP/new.phar" cli version | tee -a "$OUT/new-phar.txt"
+          grep -qx "EE $NEW_VERSION" <(php "$RUNNER_TEMP/new.phar" cli version)
+          git checkout -- VERSION img-versions.json php migrations
+
+      - name: Install EasyEngine 4.13.3 and create the sites
+        run: |
+          curl -fsSL --retry 5 "$OLD_PHAR_URL" -o "$RUNNER_TEMP/ee-old.phar"
+          echo "$OLD_PHAR_SHA256  $RUNNER_TEMP/ee-old.phar" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/ee-old.phar" /usr/local/bin/ee
+          sudo ee cli info >/dev/null
+          docker-compose version | tee "$OUT/compose-after-old-install.txt" || {
+            sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose; }
+          for spec in $OFF_RUN $SITES_RUN; do
+            site=${spec%%:*}; args=${spec#*:}
+            # shellcheck disable=SC2086
+            sudo ee site create "$site" ${args//,/ }
+            grep -qE "[[:space:]]$site([[:space:]]|$)" /etc/hosts || echo "127.0.0.1 $site" | sudo tee -a /etc/hosts
+          done
+          sudo ee site list
+          for spec in $OFF_RUN $SITES_RUN; do site=${spec%%:*}; curl -s -o /dev/null -w "$site %{http_code}\n" --max-time 10 "http://$site/"; done
+          if [ -n "$OFF_RUN" ]; then
+            for spec in $OFF_RUN; do sudo ee site disable "${spec%%:*}"; done
+            sudo ee service disable redis
+            docker kill services_global-db_1
+            sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort | tee "$OUT/containers-stopped-before.txt"
+          fi
+          sudo php -r '$p=new PDO("sqlite:/opt/easyengine/db/ee.sqlite"); foreach ($p->query("SELECT migration FROM migrations ORDER BY migration") as $r) echo $r[0], "\n";' > "$OUT/migrations-before.txt"
+          wc -l < "$OUT/migrations-before.txt"
+
+      - name: Prepare images and injections
+        run: |
+          docker tag "easyengine/nginx-proxy:$OLD_PROXY" "easyengine/nginx-proxy:$OLD_PROXY-e2e"
+          docker tag "easyengine/redis:$OLD_REDIS" "easyengine/redis:$OLD_REDIS-e2e"
+          docker tag "easyengine/mariadb:$OLD_DB" "easyengine/mariadb:$OLD_DB-e2e"
+          docker tag "easyengine/nginx:$OLD_NGINX" "easyengine/nginx:$OLD_NGINX-e2e"
+          docker image inspect "easyengine/cron:$OLD_CRON" >/dev/null 2>&1 || docker pull -q "easyengine/cron:$OLD_CRON"
+          docker tag "easyengine/cron:$OLD_CRON" "easyengine/cron:$OLD_CRON-e2e"
+          case "${{ matrix.scenario }}" in
+            health) printf 'FROM easyengine/redis:%s\nHEALTHCHECK --interval=2s --timeout=2s --retries=2 CMD false\n' "$OLD_REDIS" | docker build -q -t "easyengine/redis:$OLD_REDIS-e2ebad" - ;;
+            # redis-server is SIGSTOPped once it listens: connections are accepted, but `redis-cli ping` never gets an answer.
+            hang) printf 'FROM easyengine/redis:%s\nENTRYPOINT ["sh", "-c", "docker-entrypoint.sh \\"$@\\" & pid=$!; sleep 2; kill -STOP $pid; while :; do sleep 3600; done", "sh"]\n' "$OLD_REDIS" | docker build -q -t "easyengine/redis:$OLD_REDIS-e2ehang" - ;;
+            # Exits at once on every start, before touching the datadir; restart: always turns it into a loop.
+            crashloop|interruptfail|interruptgate) printf 'FROM easyengine/mariadb:%s\nCMD ["mariadbd","--no-such-option"]\n' "$OLD_DB" | docker build -q -t "easyengine/mariadb:$OLD_DB-e2ecrash" - ;;
+            busyport)
+              # The regenerated compose file publishes 8443, which another process holds: the new proxy can't start.
+              echo 'proxy_443_port: 8443' | sudo tee -a /opt/easyengine/config/config.yml
+              nohup python3 -m http.server 8443 --bind 0.0.0.0 > "$OUT/busyport-listener.log" 2>&1 &
+              sleep 1; ss -ltnp | grep ':8443' ;;
+            badcompose)
+              # A working docker-compose below the 2.26.1 minimum, so the upgrade tries to install 2.27.0; the download is blocked below.
+              sudo curl -fsSL "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+              docker-compose version --short | tee "$OUT/compose-before.txt"
+              sha256sum /usr/local/bin/docker-compose | cut -d' ' -f1 > "$OUT/compose-before.sha256" ;;
+          esac
+          # `docker pull` of a local e2e tag succeeds (sudo's secure_path puts /usr/local/sbin first); every other pull is real.
+          printf '#!/bin/sh\nif [ "$1" = pull ]; then case "$2" in *-e2e*) if /usr/bin/docker image inspect "$2" >/dev/null 2>&1; then echo "e2e shim: $2 is local"; exit 0; fi;; esac; fi\nexec /usr/bin/docker "$@"\n' | sudo tee /usr/local/sbin/docker >/dev/null
+          sudo chmod +x /usr/local/sbin/docker
+          echo 'global-service-ready-timeout: 30' | sudo tee -a /opt/easyengine/config/config.yml
+          sudo docker ps --format '{{.Names}}\t{{.Image}}' | sort | tee "$OUT/containers-before.txt"
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep '^easyengine/' | sort | tee "$OUT/images-before.txt"
+          # Where the upgrade starts in the (rotated) logs.
+          sudo sh -c 'for f in $(ls -tr /opt/easyengine/logs/ee.log*); do case $f in *.gz) zcat "$f";; *) cat "$f";; esac; done' | wc -l > "$OUT/log-lines-before.txt"
+
+      - name: Block the network for the scenario
+        if: matrix.scenario == 'offline' || matrix.scenario == 'badcompose'
+        run: |
+          if [ "${{ matrix.scenario }}" = offline ]; then
+            hosts="registry-1.docker.io auth.docker.io index.docker.io production.cloudflare.docker.com"
+          else
+            hosts="github.com objects.githubusercontent.com release-assets.githubusercontent.com"
+          fi
+          for h in $hosts; do echo "0.0.0.0 $h" | sudo tee -a /etc/hosts; done
+          # dockerd re-reads /etc/hosts lazily.
+          sleep 6
+          if [ "${{ matrix.scenario }}" = offline ]; then
+            ! timeout 60 /usr/bin/docker pull -q busybox:1.36.1 || { echo "Docker Hub still reachable"; exit 1; }
+          else
+            ! curl -fsS --max-time 10 -o /dev/null https://github.com/ || { echo "github.com still reachable"; exit 1; }
+          fi
+
+      - name: Upgrade (replace /usr/local/bin/ee, then ee cli info) with a 0.2 s probe
+        run: |
+          set +e
+          sites=$(for spec in $SITES_RUN; do echo "${spec%%:*}"; done)
+          : > "$OUT/probe.txt"
+          pids=()
+          for site in $sites; do
+            ( while [ ! -e "$RUNNER_TEMP/stop-probe" ]; do
+                r=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://$site/")
+                echo "$(date +%s.%N | cut -c1-14) $site $r" >> "$OUT/probe.txt"
+                sleep 0.2
+              done ) &
+            pids+=($!)
+          done
+          case "${{ matrix.scenario }}" in
+            stop)
+              # Kill the new global-db container as soon as it starts (a manual kill isn't restarted).
+              ( while read -r ts; do
+                  echo "$ts" > "$OUT/db-start.txt"
+                  docker kill services_global-db_1 > /dev/null && echo "$(date +%s.%N | cut -c1-14) killed services_global-db_1" > "$OUT/injected.txt"
+                  break
+                done < <(timeout 900 docker events --filter container=services_global-db_1 --filter event=start --format '{{.Time}}') ) & ;;
+            eeerror|stoppedfail) sudo touch /tmp/ee-e2e-eeerror ;;
+            interrupt|interruptfail|interruptgate|interruptproxy)
+              # SIGKILL ee right after the first global service changed (redis recreated, the rest not yet).
+              pattern='Executed upgrade-services_global-redis_1-container'; delay=0
+              # interruptgate: killed while the new (crash-looping) database is being waited for.
+              if [ "${{ matrix.scenario }}" = interruptgate ]; then pattern='Start upgrading services_global-db_1'; delay=8; fi
+              # interruptproxy: killed 1 s into the nginx-proxy recreate (the last global).
+              if [ "${{ matrix.scenario }}" = interruptproxy ]; then pattern='Start upgrading services_global-nginx-proxy_1'; delay=1; fi
+              ( timeout 900 sudo tail -n0 -F /opt/easyengine/logs/ee.log 2>/dev/null | grep -m1 -F "$pattern" > /dev/null; sleep "$delay"
+                sudo pkill -KILL -f '[/]usr/local/bin/ee cli info' && echo "$(date +%s.%N | cut -c1-14) killed ee after: $pattern" > "$OUT/injected.txt" ) & ;;
+          esac
+          sleep 3
+          sudo install -m 0755 "$RUNNER_TEMP/new.phar" /usr/local/bin/ee
+          start=$(date +%s.%N | cut -c1-14)
+          # A hung upgrade is killed (exit 124) instead of running into the job timeout.
+          guard=""; [ "${{ matrix.scenario }}" = hang ] && guard="timeout -k 10 300"
+          sudo $guard ee cli info > "$OUT/upgrade.log" 2>&1
+          echo $? > "$OUT/upgrade-exit.txt"
+          end=$(date +%s.%N | cut -c1-14)
+          if [[ "${{ matrix.scenario }}" == interrupt* ]]; then
+            # Sites as the interrupted upgrade left them, then the next command finishes the upgrade.
+            sleep 15
+            sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$OUT/containers-interrupted.txt"
+            cat "$OUT/containers-interrupted.txt"
+            sudo ee cli info > "$OUT/upgrade2.log" 2>&1
+            echo $? > "$OUT/upgrade2-exit.txt"
+            cat "$OUT/upgrade2.log" | tail -20
+            end=$(date +%s.%N | cut -c1-14)
+          fi
+          echo "$start $end" > "$OUT/upgrade-window.txt"
+          sleep 5
+          touch "$RUNNER_TEMP/stop-probe"
+          wait "${pids[@]}"
+          sudo pkill -f 'docker events --filter container=services_global-db_1' || true
+          tail -40 "$OUT/upgrade.log"
+          echo "exit $(cat "$OUT/upgrade-exit.txt")"
+
+      - name: Unblock the network
+        if: always() && (matrix.scenario == 'offline' || matrix.scenario == 'badcompose')
+        run: sudo sed -i '/^0\.0\.0\.0 /d' /etc/hosts
+
+      - name: State after the upgrade
+        if: always()
+        run: |
+          set +e
+          # The upgrade's logrotate step force-rotates ee.log: read the rotated files too, oldest first.
+          sudo sh -c 'for f in $(ls -tr /opt/easyengine/logs/ee.log*); do case $f in *.gz) zcat "$f";; *) cat "$f";; esac; done' > "$OUT/ee.log"
+          sudo php -r '$p=new PDO("sqlite:/opt/easyengine/db/ee.sqlite"); foreach ($p->query("SELECT key, value FROM options WHERE key = \"version\" OR key LIKE \"easyengine/%\" ORDER BY key") as $r) echo $r[0], " ", $r[1], "\n";' | tee "$OUT/options-after.txt"
+          sudo php -r '$p=new PDO("sqlite:/opt/easyengine/db/ee.sqlite"); foreach ($p->query("SELECT migration FROM migrations ORDER BY migration") as $r) echo $r[0], "\n";' > "$OUT/migrations-after.txt"
+          diff "$OUT/migrations-before.txt" "$OUT/migrations-after.txt" > "$OUT/migrations-diff.txt"; echo "migration rows: $(wc -l < "$OUT/migrations-before.txt") -> $(wc -l < "$OUT/migrations-after.txt")"
+          sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort | tee "$OUT/containers-after.txt"
+          sudo grep -E 'image: easyengine/' /opt/easyengine/services/docker-compose.yml | tee "$OUT/global-compose-images.txt"
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep '^easyengine/' | sort > "$OUT/images-after.txt"
+          for spec in $SITES_RUN; do site=${spec%%:*}; for _ in 1 2 3; do curl -s -o /dev/null -w "$site %{http_code}\n" --max-time 10 "http://$site/"; sleep 1; done; done | tee "$OUT/http-after.txt"
+          for spec in $OFF_RUN; do site=${spec%%:*}; sudo grep -E 'image: easyengine/' "/opt/easyengine/sites/$site/docker-compose.yml" | sed "s|^ *|$site |"; done | tee "$OUT/off-compose-images.txt"
+          docker network ls --format '{{.Name}}' | sort | tee "$OUT/networks-after.txt"
+          docker-compose version --short | tee "$OUT/compose-after.txt"
+          sha256sum /usr/local/bin/docker-compose | cut -d' ' -f1 > "$OUT/compose-after.sha256"
+          # Health of the globals, directly.
+          { timeout 20 docker exec services_global-db_1 sh -c 'mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent 2>&1 || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent' && echo "db: alive" || echo "db: DOWN"
+            r=$(timeout 20 docker exec services_global-redis_1 redis-cli ping 2>&1); echo "redis: $r"
+            timeout 20 docker exec services_global-nginx-proxy_1 nginx -t > /dev/null 2>&1 && echo "proxy: nginx -t ok" || echo "proxy: nginx -t FAILED"; } | tee "$OUT/globals-health.txt"
+          # Every image a container uses must still exist (the upgrade prunes unused EasyEngine images).
+          missing=""; for img in $(sudo docker ps -a --format '{{.Image}}' | grep '^easyengine/' | sort -u); do docker image inspect "$img" > /dev/null 2>&1 || missing="$missing $img"; done
+          echo "${missing:-none}" | tee "$OUT/missing-images.txt"
+          comm -23 "$OUT/images-before.txt" "$OUT/images-after.txt" | tee "$OUT/images-removed.txt"
+          # Pulls and downloads of the upgrade only (the logs also hold the 4.13.3 install).
+          tail -n +"$(( $(cat "$OUT/log-lines-before.txt") + 1 ))" "$OUT/ee.log" > "$OUT/upgrade-ee.log"
+          echo "upgrade log lines: $(wc -l < "$OUT/upgrade-ee.log")"
+          grep -oE 'docker pull [^ ]+' "$OUT/upgrade-ee.log" | sort | uniq -c | tee "$OUT/pulls.txt"
+          grep -oE 'curl [^|]*github.com/docker/compose[^ ]*' "$OUT/upgrade-ee.log" | sort -u | tee "$OUT/compose-downloads.txt"
+
+      - name: Enable the stopped services and the disabled sites
+        if: always() && startsWith(matrix.scenario, 'stopped')
+        run: |
+          set +e
+          ps_all() { sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort; }
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep '^easyengine/' | sort > "$OUT/images-before-enable.txt"
+          # (Run 40002195873 restarted dockerd here: the stopped services stayed down either way, but `docker start` of them then failed.)
+          # A failed `ee cli update` keeps the old phar; the new one would retry the migration on the next command.
+          [ "${{ matrix.scenario }}" = stoppedfail ] && sudo install -m 0755 "$RUNNER_TEMP/ee-old.phar" /usr/local/bin/ee
+          : > "$OUT/enable-rc.txt"
+          for svc in db redis; do sudo ee service enable "$svc" --debug > "$OUT/enable-$svc.log" 2>&1; echo "service $svc $?" >> "$OUT/enable-rc.txt"; done
+          for _ in $(seq 1 90); do docker exec services_global-db_1 sh -c 'mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent 2>/dev/null || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent' > /dev/null 2>&1 && break; sleep 2; done
+          for spec in $OFF_RUN; do site=${spec%%:*}; sudo ee site enable "$site" --debug > "$OUT/enable-$site.log" 2>&1; echo "site $site $?" >> "$OUT/enable-rc.txt"; done
+          cat "$OUT/enable-rc.txt"
+          sleep 5
+          ps_all | tee "$OUT/containers-enabled.txt"
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep '^easyengine/' | sort > "$OUT/images-after-enable.txt"
+          comm -13 "$OUT/images-before-enable.txt" "$OUT/images-after-enable.txt" | tee "$OUT/images-added-by-enable.txt"
+          { timeout 20 docker exec services_global-db_1 sh -c 'mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent 2>&1 || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent' && echo "db: alive" || echo "db: DOWN"
+            r=$(timeout 20 docker exec services_global-redis_1 redis-cli ping 2>&1); echo "redis: $r"; } | tee "$OUT/globals-health-enabled.txt"
+          for spec in $SITES_RUN $OFF_RUN; do site=${spec%%:*}; code=000
+            for _ in $(seq 1 20); do code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://$site/"); [ "$code" = 200 ] && break; sleep 3; done
+            echo "$site $code"; done | tee "$OUT/http-enabled.txt"
+          grep -hE 'docker pull|Pulling|Pulled' "$OUT"/enable-*.log | head -20 | tee "$OUT/enable-pulls.txt"
+
+      - name: Summarise
+        if: always()
+        run: |
+          python3 - "$OUT" "${{ matrix.variant }}" "${{ matrix.scenario }}" <<'PY' | tee "$OUT/summary.md"
+          import sys, re, datetime, collections, os
+          out, variant, scenario = sys.argv[1:4]
+          rows = collections.defaultdict(list)
+          for line in open(f"{out}/probe.txt"):
+              p = line.split()
+              if len(p) == 3:
+                  rows[p[1]].append((float(p[0]), p[2]))
+          start, end = map(float, open(f"{out}/upgrade-window.txt").read().split())
+          ex = open(out + '/upgrade-exit.txt').read().strip()
+          ex2 = open(out + '/upgrade2-exit.txt').read().strip() if os.path.exists(out + '/upgrade2-exit.txt') else '-'
+          print(f"## {variant} / {scenario}\n")
+          print(f"Upgrade exit {ex} (second run: {ex2}), {end - start:.1f} s.\n")
+          print("| Site | Probes | Non-200 | Longest outage (s) |")
+          print("|---|---|---|---|")
+          for site, r in sorted(rows.items()):
+              r = [x for x in r if start - 1 <= x[0] <= end + 5]
+              bad = [x for x in r if x[1] != "200"]
+              longest, cur = 0.0, None
+              for ts, code in r:
+                  if code != "200":
+                      cur = cur if cur is not None else ts
+                      longest = max(longest, ts - cur + 0.2)
+                  else:
+                      cur = None
+              print(f"| {site} | {len(r)} | {len(bad)} | {longest:.1f} |")
+          print()
+          for f in ("options-after", "http-after", "globals-health", "pulls", "compose-downloads", "images-removed", "missing-images"):
+              print(f"{f}: " + open(f"{out}/{f}.txt").read().strip().replace("\n", "; ") + "\n")
+          for f in ("containers-stopped-before", "off-compose-images", "containers-after", "enable-rc", "containers-enabled", "images-added-by-enable", "globals-health-enabled", "http-enabled"):
+              if scenario.startswith("stopped") and os.path.exists(f"{out}/{f}.txt"):
+                  print(f"{f}: " + open(f"{out}/{f}.txt").read().strip().replace("\n", "; ") + "\n")
+          PY
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Global steps in ee.log'; echo '```'; grep -E 'Executing (backup-global|stop-global|generate-global|upgrade-services|update-compose)|Reverting (backup-global|upgrade-services|update-compose)|is not ready|unhealthy|keeps restarting|injected|Could not install|Error' "$OUT/ee.log" | cut -c1-220 | tail -60; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upgrade-${{ matrix.scenario }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+      - name: Check (after)
+        if: matrix.variant == 'after' || matrix.variant == 'aftersvc'
+        run: |
+          cd "$OUT"
+          exit_code=$(cat upgrade-exit.txt)
+          fail=0
+          ok_upgrade() {
+            grep -q "^version $NEW_VERSION\$" options-after.txt || { echo "version not bumped"; fail=1; }
+            grep -q "services_global-db_1.*easyengine/mariadb:$OLD_DB-e2e[[:space:]].*Up" containers-after.txt || { echo "db not upgraded"; fail=1; }
+            grep -q "services_global-redis_1.*easyengine/redis:$OLD_REDIS-e2e[[:space:]].*Up" containers-after.txt || { echo "redis not upgraded"; fail=1; }
+            grep -q "services_global-nginx-proxy_1.*easyengine/nginx-proxy:$OLD_PROXY-e2e[[:space:]].*Up" containers-after.txt || { echo "proxy not upgraded"; fail=1; }
+          }
+          case "${{ matrix.scenario }}" in
+            baseline|offline|badcompose)
+              [ "$exit_code" = 0 ] || { echo "upgrade failed"; fail=1; }
+              # Positive control for the pull checks below: the changed, tracked tags are pulled.
+              grep -q 'docker pull easyengine/mariadb:' pulls.txt || { echo "no pull found in the upgrade log"; fail=1; }
+              ok_upgrade ;;
+            interruptproxy)
+              # Killed mid proxy recreate: the next command must finish the upgrade (recreate + gate the proxy).
+              [ -s injected.txt ] || { echo "the kill was not injected"; fail=1; }
+              [ "$exit_code" != 0 ] || { echo "the killed run must not exit 0"; fail=1; }
+              [ "$(cat upgrade2-exit.txt)" = 0 ] || { echo "the next run did not finish the upgrade"; fail=1; }
+              echo "proxy right after the kill: $(grep services_global-nginx-proxy_1 containers-interrupted.txt | tr '\t' ' ')"
+              ok_upgrade ;;
+            interrupt)
+              [ -s injected.txt ] || { echo "the kill was not injected"; fail=1; }
+              [ "$exit_code" != 0 ] || { echo "the killed run must not exit 0"; fail=1; }
+              [ "$(cat upgrade2-exit.txt)" = 0 ] || { echo "the next run did not finish the upgrade"; fail=1; }
+              grep -q "services_global-db_1.*Up" containers-interrupted.txt || { echo "db down after the interrupt"; fail=1; }
+              grep -q "services_global-nginx-proxy_1.*Up" containers-interrupted.txt || { echo "proxy down after the interrupt"; fail=1; }
+              ok_upgrade ;;
+            interruptfail|interruptgate)
+              # The retry fails on the crash-looping database and must roll back to the state before the killed run.
+              [ -s injected.txt ] || { echo "the kill was not injected"; fail=1; }
+              [ "$(cat upgrade2-exit.txt)" != 0 ] || { echo "the retry must fail"; fail=1; }
+              grep -q "^version $OLD_VERSION\$" options-after.txt || { echo "version must stay $OLD_VERSION"; fail=1; }
+              grep -q "services_global-db_1.*easyengine/mariadb:$OLD_DB[[:space:]].*Up" containers-after.txt || { echo "db not back on its old tag"; fail=1; }
+              grep -q "services_global-nginx-proxy_1.*easyengine/nginx-proxy:$OLD_PROXY[[:space:]].*Up" containers-after.txt || { echo "proxy not on its old tag"; fail=1; }
+              grep -q "easyengine/mariadb:$OLD_DB\$" global-compose-images.txt || { echo "global compose file not restored"; fail=1; }
+              # redis (and cron) were recreated by the killed run; the rollback puts them back on the snapshot's images too.
+              grep -q "services_global-redis_1.*easyengine/redis:$OLD_REDIS[[:space:]].*Up" containers-after.txt || { echo "redis not back on its old tag"; fail=1; }
+              ! grep -q "services_global-cron_1.*-e2e" containers-after.txt || { echo "cron left on the new tag"; fail=1; } ;;
+            stopped)
+              [ "$exit_code" = 0 ] || { echo "upgrade failed"; fail=1; }
+              grep -q "^version $NEW_VERSION\$" options-after.txt || { echo "version not bumped"; fail=1; }
+              for kv in "nginx-proxy $OLD_PROXY" "nginx $OLD_NGINX" "cron $OLD_CRON"; do
+                grep -q "^easyengine/${kv% *} ${kv#* }-e2e\$" options-after.txt || { echo "easyengine/${kv% *} tag not recorded"; fail=1; }
+              done
+              # The stopped services keep their containers and old images, and their old tags stay recorded.
+              grep -q "^easyengine/mariadb $OLD_DB\$" options-after.txt || { echo "the stopped db's new tag was recorded"; fail=1; }
+              grep -q "^easyengine/redis $OLD_REDIS\$" options-after.txt || { echo "the stopped redis's new tag was recorded"; fail=1; }
+              grep -qP "^services_global-db_1\t(easyengine/mariadb:$OLD_DB|[0-9a-f]{12})\tExited" containers-after.txt || { echo "the stopped db was touched"; fail=1; }
+              grep -qP "^services_global-redis_1\t(easyengine/redis:$OLD_REDIS|[0-9a-f]{12})\tExited" containers-after.txt || { echo "the stopped redis was touched"; fail=1; }
+              grep -q "services_global-nginx-proxy_1.*easyengine/nginx-proxy:$OLD_PROXY-e2e[[:space:]].*Up" containers-after.txt || { echo "proxy not upgraded"; fail=1; }
+              grep -q "easyengine/mariadb:$OLD_DB-e2e\$" global-compose-images.txt || { echo "global compose file not regenerated"; fail=1; }
+              grep -qx ee-global-backend-network networks-after.txt || { echo "the global backend network was pruned"; fail=1; }
+              ! grep -qE 'docker pull easyengine/(mariadb|redis):' pulls.txt || { echo "an image only stopped services use was pulled"; fail=1; }
+              for site in wpoff.test phpoff.test; do
+                grep -q "^$site image: easyengine/nginx:$OLD_NGINX-e2e\$" off-compose-images.txt || { echo "$site compose file not on the new nginx"; fail=1; }
+              done
+              ! grep -q ":$OLD_NGINX\$" off-compose-images.txt || { echo "a disabled site kept the old nginx tag"; fail=1; }
+              ! grep -q 'update-ee-' containers-after.txt || { echo "support containers left behind"; fail=1; }
+              ! grep -qv ' 0$' enable-rc.txt || { echo "an enable failed"; cat enable-rc.txt; fail=1; }
+              if true; then
+                # `ee service enable` recreates them from the regenerated compose file.
+                grep -q "services_global-db_1.*easyengine/mariadb:$OLD_DB-e2e[[:space:]].*Up" containers-enabled.txt || { echo "db not up on its new image"; fail=1; }
+                grep -q "services_global-redis_1.*easyengine/redis:$OLD_REDIS-e2e[[:space:]].*Up" containers-enabled.txt || { echo "redis not up on its new image"; fail=1; }
+              else
+                # Without the service-command change: started as they are, on the image their recorded tag names.
+                grep -qP "^services_global-db_1\t(easyengine/mariadb:$OLD_DB|[0-9a-f]{12})\tUp" containers-enabled.txt || { echo "db not started"; fail=1; }
+                grep -qP "^services_global-redis_1\t(easyengine/redis:$OLD_REDIS|[0-9a-f]{12})\tUp" containers-enabled.txt || { echo "redis not started"; fail=1; }
+              fi
+              # `ee site enable` (no --refresh) brings the disabled sites up on the new images without pulling old ones.
+              for p in wpofftest phpofftest; do
+                grep -q "^$p-nginx-1[[:space:]]easyengine/nginx:$OLD_NGINX-e2e[[:space:]].*Up" containers-enabled.txt || { echo "$p nginx not up on the new image"; fail=1; }
+              done
+              # Tags of the retagged images without -e2e are the old ones.
+              ! grep -qE "^easyengine/(nginx|nginx-proxy|mariadb|redis|cron):v[0-9.]+\$" images-added-by-enable.txt || { echo "enabling pulled an old image"; cat images-added-by-enable.txt; fail=1; }
+              grep -q '^db: alive' globals-health-enabled.txt || { echo "db not answering after enable"; fail=1; }
+              grep -q '^redis: PONG' globals-health-enabled.txt || { echo "redis not answering after enable"; fail=1; }
+              [ "$(grep -vc ' 200$' http-enabled.txt)" = 0 ] || { echo "a site is not serving after the enables"; fail=1; } ;;
+            stoppedfail)
+              # php.test fails after the disabled sites were moved: all of it is rolled back, the stopped services untouched.
+              [ "$exit_code" != 0 ] || { echo "a failed upgrade must exit non-zero"; fail=1; }
+              grep -q "^version $OLD_VERSION\$" options-after.txt || { echo "version must stay $OLD_VERSION"; fail=1; }
+              grep -q "^easyengine/mariadb $OLD_DB\$" options-after.txt || { echo "db tag changed"; fail=1; }
+              grep -q "^easyengine/nginx $OLD_NGINX\$" options-after.txt || { echo "nginx tag not reverted"; fail=1; }
+              grep -q 'Executing update-disabled-wpoff.test-docker-compose' ee.log || { echo "the disabled site was never updated, so nothing was rolled back"; fail=1; }
+              grep -qP "^services_global-db_1\teasyengine/mariadb:$OLD_DB\tExited" containers-after.txt || { echo "the stopped db was touched"; fail=1; }
+              grep -qP "^services_global-redis_1\teasyengine/redis:$OLD_REDIS\tExited" containers-after.txt || { echo "the stopped redis was touched"; fail=1; }
+              grep -q "services_global-nginx-proxy_1.*easyengine/nginx-proxy:$OLD_PROXY[[:space:]].*Up" containers-after.txt || { echo "proxy not back on its old tag"; fail=1; }
+              grep -q "easyengine/mariadb:$OLD_DB\$" global-compose-images.txt || { echo "global compose file not restored"; fail=1; }
+              for site in wpoff.test phpoff.test; do
+                grep -q "^$site image: easyengine/nginx:$OLD_NGINX\$" off-compose-images.txt || { echo "$site compose file not restored"; fail=1; }
+              done
+              ! grep -q 'update-ee-' containers-after.txt || { echo "support containers left behind"; fail=1; }
+              ! grep -qv ' 0$' enable-rc.txt || { echo "an enable failed"; cat enable-rc.txt; fail=1; }
+              grep -q "services_global-db_1.*easyengine/mariadb:$OLD_DB[[:space:]].*Up" containers-enabled.txt || { echo "db not up on its old image"; fail=1; }
+              grep -q '^db: alive' globals-health-enabled.txt || { echo "db not answering after enable"; fail=1; }
+              [ "$(grep -vc ' 200$' http-enabled.txt)" = 0 ] || { echo "a site is not serving after the enables"; fail=1; } ;;
+            *)
+              [ "$exit_code" != 0 ] || { echo "a failed upgrade must exit non-zero"; fail=1; }
+              grep -q "^version $OLD_VERSION\$" options-after.txt || { echo "version must stay $OLD_VERSION"; fail=1; }
+              grep -q "services_global-db_1.*easyengine/mariadb:$OLD_DB[[:space:]].*Up" containers-after.txt || { echo "db not back on its old tag"; fail=1; }
+              grep -q "services_global-nginx-proxy_1.*easyengine/nginx-proxy:$OLD_PROXY[[:space:]].*Up" containers-after.txt || { echo "proxy not back on its old tag"; fail=1; }
+              grep -q "services_global-redis_1.*easyengine/redis:$OLD_REDIS[[:space:]].*Up" containers-after.txt || { echo "redis not back on its old tag"; fail=1; }
+              ! grep -q 'update-ee-' containers-after.txt || { echo "support containers left behind"; fail=1; } ;;
+          esac
+          if [ "${{ matrix.scenario }}" = hang ]; then
+            grep -q 'services_global-redis_1 is not ready after 30 s (redis-cli ping timed out after 10 s)' ee.log upgrade.log || { echo "no probe timeout reported"; fail=1; }
+            secs=$(awk '{ printf "%d", $2 - $1 }' upgrade-window.txt)
+            [ "$secs" -lt 240 ] || { echo "the failed upgrade took $secs s"; fail=1; }
+          fi
+          if [ "${{ matrix.scenario }}" = badcompose ]; then
+            grep -q 'Could not install docker-compose 2.27.0' ee.log upgrade.log || { echo "no warning about the failed compose install"; fail=1; }
+            cmp -s compose-before.sha256 compose-after.sha256 || { echo "docker-compose binary was replaced"; fail=1; }
+            grep -qx '2.20.3' compose-after.txt || { echo "docker-compose no longer runs"; fail=1; }
+          fi
+          case "${{ matrix.scenario }}" in
+            stopped*) ;;
+            *)
+              grep -q '^db: alive' globals-health.txt || { echo "global db not answering"; fail=1; }
+              grep -q '^redis: PONG' globals-health.txt || { echo "global redis not answering"; fail=1; } ;;
+          esac
+          grep -q '^proxy: nginx -t ok' globals-health.txt || { echo "proxy config broken"; fail=1; }
+          [ "$(grep -vc ' 200$' http-after.txt)" = 0 ] || { echo "a site is not serving after the upgrade"; fail=1; }
+          grep -qx none missing-images.txt || { echo "an image in use was pruned"; fail=1; }
+          # Migration rows: a completed upgrade adds the three new ones; a rolled-back one keeps only the db migration (no undo);
+          # after a killed run the container migrations it executed keep their rows (recorded, not gated).
+          added=$(comm -13 <(sort migrations-before.txt) <(sort migrations-after.txt) | cut -c1-14 | sort | xargs)
+          removed=$(comm -23 <(sort migrations-before.txt) <(sort migrations-after.txt) | wc -l)
+          echo "migration rows added: [$added], removed: $removed"
+          [ "$removed" = 0 ] || { echo "migration rows removed"; fail=1; }
+          case "${{ matrix.scenario }}" in
+            baseline|offline|badcompose|stopped|interrupt|interruptproxy) want="$NEW_MIGS" ;;
+            interruptfail|interruptgate) want="" ;;
+            *) want="$NEW_DB_MIGS" ;;
+          esac
+          [ -z "$want" ] || [ "$added" = "$(echo $want | tr ' ' '\n' | sort | xargs)" ] || { echo "migration rows added [$added], expected [$want]"; fail=1; }
+          ! grep -q 'docker pull easyengine/php:' pulls.txt || { echo "easyengine/php was pulled"; fail=1; }
+          ! grep -q '1\.29\.2' compose-downloads.txt || { echo "compose 1.29.2 downloaded"; fail=1; }
+          exit $fail
+
