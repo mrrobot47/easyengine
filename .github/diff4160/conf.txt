@@ -1,28 +1,19 @@
-CORE_SHA 7765d9f640762bcb2f41462d18390158a0a61e4b
-CORE_SHA_OLD 7765d9f640762bcb2f41462d18390158a0a61e4b
+CORE_REPO mrrobot47/easyengine
+CORE_SHA 00493a77121c937c862324ba1139e4c5f1ed9cb7
 PKG site-command mrrobot47/site-command 8d59c4219ba776d89403bf8ebdbcd754076c7e8d
-RUN wp stable
+PKG cron-command mrrobot47/cron-command 1eb6e450349e5ee6e46a7fc5da92284030d115a4
 RUN wp rc
 RUN wp upgrade
-RUN phphtml stable
 RUN phphtml rc
 RUN phphtml upgrade
-RUN newphp stable
 RUN newphp rc
 RUN newphp upgrade
-RUN edge stable
 RUN edge rc
 RUN edge upgrade
-RUN oldphp stable
 RUN oldphp rc
 RUN oldphp upgrade
-RUN globals stable
 RUN globals rc
 RUN globals upgrade
-RUN ssl stable
 RUN ssl rc
 RUN ssl upgrade
-RUN wp rcold
-RUN phphtml rcold
-RUN newphp rcold
-RUN edge rcold
+RUN sidmig from4133-rc
