@@ -13,7 +13,7 @@ create() {
   st c-e5 site create e5.test --type=wp --php=8.4 --local-db $W
   sh_st marks ". $F/lib.sh; mark e1.test public; mark e2.test; mark e3.test web; mark e4.test; mark e5.test
     phpmark e2.test $SITES/e2.test/app/htdocs; phpmark e3.test $SITES/e3.test/app/htdocs/web; phpmark e4.test $SITES/e4.test/app/htdocs; phpmark e5.test $SITES/e5.test/app/htdocs
-    echo f-e2 > $SITES/e2.test/app/htdocs/f.txt; chmod 644 $SITES/e2.test/app/htdocs/f.txt"
+    echo MARK-f-e2-orig > $SITES/e2.test/app/htdocs/f.txt; chmod 644 $SITES/e2.test/app/htdocs/f.txt"
   for s in e1 e3 e4 e5; do st at-$s admin-tools enable $s.test; done
   st mh-e2 mailhog enable e2.test
   sh_st custom ". $F/lib.sh; custom_conf e2.test; custom_conf e3.test; setkey e2.test $NRKEY; mkdir -p $SITES/e4.test/user-docker-compose

@@ -2,7 +2,7 @@
 # Shard phphtml: php and html sites, with and without (nested) public-dir, with-db/local-db, cache, ssl self, aliases.
 HTTP="p1.test|/ p1.test|/pmark.php p2.test|/mark.txt p2.test|/pmark.php p2.test|/ee-admin/ p2a.test|/mark.txt p3.test|/mark.txt p3.test|/pmark.php p4.test|/pmark.php p5.test|/pmark.php
 p6.test|/pmark.php|https p6.test|/ p6a.test|/pmark.php|https p2c.test|/mark.txt p2c.test|/pmark.php p2.test|/pmark.php|https
-h1.test|/mark.txt h2.test|/mark.txt h2a.test|/mark.txt h3.test|/mark.txt h3.test|/ h4.test|/mark.txt|https h4.test|/mark.txt h4a.test|/mark.txt|https h5.test|/mark.txt h5a.test|/mark.txt h2c.test|/mark.txt h2.test|/mark.txt|https h2.test|/f.txt p2.test|/f.txt"
+h1.test|/mark.txt h2.test|/mark.txt h2a.test|/mark.txt h3.test|/mark.txt h3.test|/ h4.test|/mark.txt|https h4.test|/mark.txt h4a.test|/mark.txt|https h5.test|/mark.txt h5a.test|/mark.txt h2c.test|/mark.txt h2.test|/mark.txt|https h2.test|/f.txt p2.test|/f.txt h2.test|/f.txt|https p2.test|/f.txt|https"
 create() {
   st c-p1 site create p1.test --type=php
   st c-p2 site create p2.test --type=php --public-dir=public --with-db
@@ -18,7 +18,7 @@ create() {
   sh_st marks ". $F/lib.sh; mark p1.test; mark p2.test public; mark p3.test a/b/c; mark p4.test web; mark p5.test; mark p6.test; mark h1.test; mark h2.test public; mark h3.test x/y; mark h4.test; mark h5.test
     H=$SITES; phpmark p1.test \$H/p1.test/app/htdocs; phpmark p2.test \$H/p2.test/app/htdocs/public; phpmark p3.test \$H/p3.test/app/htdocs/a/b/c; phpmark p4.test \$H/p4.test/app/htdocs/web
     phpmark p5.test \$H/p5.test/app/htdocs; phpmark p6.test \$H/p6.test/app/htdocs
-    echo f-p2 > \$H/p2.test/app/htdocs/public/f.txt; echo f-h2 > \$H/h2.test/app/htdocs/public/f.txt; chmod 644 \$H/p2.test/app/htdocs/public/f.txt \$H/h2.test/app/htdocs/public/f.txt"
+    echo MARK-f-p2-orig > \$H/p2.test/app/htdocs/public/f.txt; echo MARK-f-h2-orig > \$H/h2.test/app/htdocs/public/f.txt; chmod 644 \$H/p2.test/app/htdocs/public/f.txt \$H/h2.test/app/htdocs/public/f.txt"
   st at-p2 admin-tools enable p2.test
   st mh-p1 mailhog enable p1.test
   sh_st custom-p3 ". $F/lib.sh; custom_conf p3.test"
@@ -49,7 +49,7 @@ cmds() {
   st clone-p2 site clone p2.test p2c.test
   st clone-h2 site clone h2.test h2c.test
   snap after-clone
-  sh_st break "echo CHANGED > $SITES/p2.test/app/htdocs/public/f.txt; echo CHANGED > $SITES/h2.test/app/htdocs/public/f.txt"
+  sh_st break "echo MARK-f-CHANGED > $SITES/p2.test/app/htdocs/public/f.txt; echo MARK-f-CHANGED > $SITES/h2.test/app/htdocs/public/f.txt"
   st rs-p2 site restore p2.test
   st rs-h2 site restore h2.test
   snap after-restore
