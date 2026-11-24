@@ -42,8 +42,10 @@ cmds() {
   st at-en-again admin-tools enable g1.test
   st at-dis admin-tools disable g1.test
   st at-en2 admin-tools enable g1.test --force
-  st log-g1 log show g1.test --n=2
-  st log-cli log show --cli --n=0
+  # ee log show follows (tail -f): cap it.
+  sh_st log-g1 "timeout 8 ee log show g1.test --n=2 < /dev/null; echo rc=\$?"
+  sh_st log-cli "timeout 8 ee log show --cli --n=0 < /dev/null | head -3; echo rc=\$?"
+  sh_st log-bad "timeout 8 ee log show g1.test --n=abc < /dev/null; echo rc=\$?"
   st auth-create-g auth create global --user=diffu --pass=diffp4160
   st auth-create-s auth create g1.test --user=situ --pass=sitp4160
   st auth-list-g auth list global

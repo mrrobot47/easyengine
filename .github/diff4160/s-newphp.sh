@@ -4,7 +4,6 @@
 HTTP="n81.test|/ n81.test|/pmark.php n81.test|/ee-admin/ n82.test|/ n82.test|/mark.txt n82.test|/pmark.php n83.test|/ n83.test|/pmark.php n83.test|/ee-admin/ n84.test|/ n84.test|/mark.txt n84.test|/pmark.php
 n85.test|/ n85.test|/pmark.php n86.test|/ n86.test|/pmark.php np84.test|/mark.txt np84.test|/pmark.php np84.test|/ee-admin/ n81.test|/|https n81.test|/ee-admin/|https n83.test|/|https n83.test|/ee-admin/|https n83a.test|/ n83a.test|/ee-admin/
 n83c.test|/ n83c.test|/pmark.php n83c.test|/ee-admin/"
-sidini() { find -L $SITES/$1/config/php -name php.ini | head -1; }
 create() {
   st svc-nrd service enable newrelic-daemon
   st c-n81 site create n81.test --type=wp --php=8.1 $W

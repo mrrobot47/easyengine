@@ -2,7 +2,6 @@
 # Shard sidmig: PHP 8.4 sites created on 4.13.3 (php.ini with the shipped session.sid lines, one with user values), then upgraded
 # to 4.15.0 (shipped migration) or to the RC (the refactored one, site-command#536). Same post-state expected.
 HTTP="s84w.test|/pmark.php s84p.test|/pmark.php s83w.test|/pmark.php slw.test|/pmark.php"
-sidini() { find -L $SITES/$1/config/php -name php.ini | head -1; }
 create() {
   st c-s84w site create s84w.test --type=wp --php=8.4 $W
   st c-s84p site create s84p.test --type=php --php=8.4

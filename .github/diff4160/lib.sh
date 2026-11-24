@@ -31,7 +31,7 @@ PHP
   chmod 644 $web/pmark.php; chown --reference=$web $web/pmark.php; }
 # http <host> <path> [https]: code, Location, the first MARK/PMARK token or <title>, X-Diff-Custom header.
 http() { local h=$1 p=${2:-/} sc=${3:-http} port=80 hd bd c; [ "$sc" = https ] && port=443; hd=$(mktemp); bd=$(mktemp)
-  c=$(curl -sk -m 25 -D $hd -o $bd -w '%{http_code}' --resolve "$h:$port:127.0.0.1" "$sc://$h$p")
+  local i; for i in 1 2 3; do c=$(curl -sk -m 25 -D $hd -o $bd -w '%{http_code}' --resolve "$h:$port:127.0.0.1" "$sc://$h$p"); [ "$c" != 000 ] && break; echo "$sc://$h$p 000 attempt $i" >> $OUT/http-retries.txt; sleep 5; done
   echo "$sc://$h$p $c loc=$(tr -d '\r' < $hd | awk 'tolower($1)=="location:"{print $2}' | tail -1) custom=$(tr -d '\r' < $hd | awk 'tolower($1)=="x-diff-custom:"{print $2}' | tail -1) body=$(grep -aoE '(P?MARK-[^ <]*( [0-9.]+ docroot=[^ ]* mem=[^ ]* sid_len=[^ ]* nr=[01] redis=[01])?)|<title>[^<]*</title>' $bd | head -1)"
   rm -f $hd $bd; }
 # snap <label>: comparable state. Raw values; normalisation happens offline.
@@ -50,19 +50,21 @@ snap() { local L=$1 D=$OUT/snap/$1 s c t; mkdir -p $D/sites $D/ctr; sleep 3
       for f in $(find user-docker-compose config -type f 2>/dev/null | grep -vE '\.(gz|log)$|/php\.ini$' | sort); do echo "=== $f"; cat $f; done
       echo "=== php.ini md5 / sid lines"; for f in $(find -L config/php -name php.ini 2>/dev/null); do echo "$f $(md5sum < $f | cut -c1-32)"; grep -nE '^\s*session\.sid' $f; done
       echo "=== tree"; find . -maxdepth 4 \( -path ./app/htdocs/wp-content -o -path ./app/htdocs/wp-includes -o -path ./app/htdocs/wp-admin -o -path ./logs -o -path '*/wp-includes' -o -path '*/wp-admin' -o -path '*/wp-content' \) -prune -o -printf '%M %u:%g %p %l\n' | sort -k3) > $D/sites/$s/files.txt 2>&1
-    docker exec $(cname $s)-nginx-1 nginx -T > $D/sites/$s/nginx-T.txt 2>&1
+    docker exec $(cname $s)-nginx-1 nginx -T > $D/sites/$s/nginx-T.txt 2> $D/sites/$s/nginx-T.err
   done
   (cd $SVC && for f in docker-compose.yml cron/conf/config.ini; do [ -f $f ] && { echo "=== $f"; cat $f; }; done
     echo "=== nginx-proxy tree"; find nginx-proxy -maxdepth 2 \( -path nginx-proxy/certs -o -path nginx-proxy/vhost.d -o -path nginx-proxy/htpasswd -o -path nginx-proxy/conf.d \) -prune -o -printf '%M %p\n' | sort
     for d in vhost.d conf.d htpasswd; do for f in $(find nginx-proxy/$d -type f 2>/dev/null | sort); do echo "=== $f"; cat $f; done; done
     echo "=== certs"; for f in $(find nginx-proxy/certs -name '*.crt' 2>/dev/null | sort); do echo "$f $(openssl x509 -in $f -noout -subject -ext subjectAltName 2>&1 | tr '\n' ' ')"; done) > $D/services.txt 2>&1
-  docker exec $PROXY nginx -T > $D/proxy-nginx-T.txt 2>&1
+  docker exec $PROXY nginx -T > $D/proxy-nginx-T.txt 2> $D/proxy-nginx-T.err
   for u in $HTTP; do IFS='|' read -r h p sc <<< "$u"; http $h $p $sc; done > $D/http.txt
   ee site list < /dev/null > $D/site-list.txt 2>&1
   for s in $(ls $SITES 2>/dev/null); do echo "### $s"; ee site info $s < /dev/null 2>&1; done > $D/site-info.txt
   ee cron list --all < /dev/null > $D/cron-list.txt 2>&1
   ee cli version < /dev/null > $D/cli-version.txt 2>&1
   echo "[$(ts)] snap $L"; }
+# sidini <site>: the php.ini in the site's php config.
+sidini() { find -L $SITES/$1/config/php -name php.ini | head -1; }
 # setkey <site> <key>: NEWRELIC_LICENSE_KEY in the site's .env.
 setkey() { local e=$SITES/$1/.env; if grep -q '^NEWRELIC_LICENSE_KEY=' $e; then sed -i "s/^NEWRELIC_LICENSE_KEY=.*/NEWRELIC_LICENSE_KEY=$2/" $e; else echo "NEWRELIC_LICENSE_KEY=$2" >> $e; fi; }
 NRKEY=0123456789abcdef0123456789abcdef01234567
