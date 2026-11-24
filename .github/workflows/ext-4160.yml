@@ -1,0 +1,339 @@
+# v4.16.0 EXTENDED COVERAGE (2026-11-24): the Lane A upgrade harness (upgrade-4160.yml + ../ci-scripts/release-upgrade-4160) extended with
+# failure paths from stable 4.15.0 (failpull: Docker Hub blocked at the first pull; failpull-mid: a php image pull fails inside a site's
+# upgrade step after the globals and earlier sites were recreated; faillate-site: a site's compose up fails after the pulls; faillate:
+# ee-update-docker-compose throws after the image step), each followed by a plain retry and the full Lane A checks; disabled sites
+# (8.1-8.6, html, php, layout sites) and PHP 5.6-8.0 sites (plus --public-dir, CI/CD `current` and WordPress-in-wp/ layouts) on 4.15.0;
+# and upgrades from the latest patch of every older minor (4.14.2, 4.13.3, 4.12.0, 4.11.0, 4.10.2) with the Lane A checks and rel.sh.
+# Legs: SCRIPTS/legs-all.json (per-leg knobs derived from the git tags' img-versions.json); SCRIPTS/legs.txt picks the legs a push runs.
+# Temp branch tmp/ext-4160 on mrrobot47/easyengine = core CORE_SHA + this file as .github/workflows/ext-4160.yml + ../ci-scripts/release-ext-4160/ as .github/ext4160/.
+name: v4.16.0 extended coverage (failure paths, disabled, PHP 5.6-8.0, older stables)
+
+on:
+  push:
+    branches:
+      - 'tmp/ext-4160'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CORE_REPO: mrrobot47/easyengine
+  CORE_SHA: 7765d9f640762bcb2f41462d18390158a0a61e4b
+  RELEASE_VERSION: '4.16.0'
+  EXPECT_REFS: 'easyengine/admin-tools-command=edceb582ea0c0009356ba25801cefadaab3e39ae easyengine/auth-command=2bec5539c7e17391f2d7ad8b33a3eaf20dc84dde easyengine/config-command=49bb3c76b683edc0e1935b8ca49fea4a1bccbc64 easyengine/cron-command=5bafeb45db34bdb467a3adc35760fd5f03159ccd easyengine/dash-command=fd35bd29e48b9af28db8811bd7a974d8c0709c56 easyengine/log-command=9840481de643e853259694291d6f4c61a7ca23b1 easyengine/mailhog-command=1dee0473dfb7011a15af7dae549794d7ab9e2946 easyengine/service-command=93d4266c7ee39b82f6c599673352d6ba2f639c33 easyengine/shell-command=e16751f54ae98ac2d43d54add02fa8befd568f9c easyengine/site-command=98a897853320a58e13e994238bf8b0430b692564 easyengine/site-type-php=6230b69845d4aaa1eb7223df642a1c7455787c48 easyengine/site-type-wp=f3e11abee37839a52a158f7dfc9f88a62cd8f791'
+  EXPECT_IMG: 'compat-scanner=v4.16.0 cron=v4.16.0 newrelic-daemon=v4.16.0 php8.1=v4.16.0 php8.2=v4.16.0 php8.3=v4.16.0 php8.4=v4.16.0 php8.5=v4.15.0 php8.6=v4.15.0 nginx-proxy=v4.14.1 nginx=v4.14.0 postfix=v4.14.0 redis=v4.14.0 mariadb=v4.9.1 mailhog=v4.6.5'
+  PHP_EXPECT: '8.1=8.1.34 8.2=8.2.36 8.3=8.3.37 8.4=8.4.28 8.5=8.5.13 8.6=8.6.0'
+  SCRIPTS: .github/ext4160
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+
+jobs:
+  build:
+    name: build the release phar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.phar.outputs.version }}
+      md5: ${{ steps.phar.outputs.md5 }}
+    steps:
+      - name: Set paths
+        run: |
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"; : > "$OUT/results.txt"
+
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+
+      - name: Check out core at the release commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.CORE_REPO }}
+          ref: ${{ env.CORE_SHA }}
+          path: core
+
+      - name: Set up PHP (as core CI's build job; Composer as the step 0 build)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:2.10.3
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Install dependencies (core CI, tag path)
+        working-directory: core
+        run: |
+          test "$(git rev-parse HEAD)" = "$CORE_SHA"
+          composer --version | tee "$OUT/composer-version.txt"
+          composer install --no-dev --no-progress --no-interaction
+          test -z "$(git status --porcelain -- composer.json composer.lock)"
+          cp composer.json composer.lock "$OUT/"
+          jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock | tee "$OUT/easyengine-refs.txt"
+          for kv in $EXPECT_REFS; do p=${kv%%=*}; e=${kv#*=}; g=$(jq -r --arg p "$p" '.packages[] | select(.name == $p) | .source.reference' composer.lock)
+            [ "$g" = "$e" ] && r=PASS || r=FAIL; echo "$r | build: composer.lock $p reference | exp $e | got $g" | tee -a "$RES"; done
+          g=$(jq -r '[.packages[] | select(.name | startswith("easyengine/"))] | length' composer.lock); e=$(echo $EXPECT_REFS | wc -w)
+          [ "$g" = "$e" ] && r=PASS || r=FAIL; echo "$r | build: composer.lock easyengine/* packages = EXPECT_REFS entries | exp $e | got $g" | tee -a "$RES"
+
+      - name: Build the phar (VERSION as committed)
+        id: phar
+        working-directory: core
+        run: |
+          v=$(head -n 1 VERSION | xargs); [ "$v" = "$RELEASE_VERSION" ] && r=PASS || r=FAIL; echo "$r | build: VERSION | exp $RELEASE_VERSION | got $v" | tee -a "$RES"
+          php -dphar.readonly=0 utils/make-phar.php easyengine.phar
+          php -r '$bad = []; foreach ( new RecursiveIteratorIterator( new Phar( "easyengine.phar" ) ) as $f ) { $p = $f->getPathname(); if ( preg_match( "#/vendor/easyengine/[^/]+/(tests|features)/#", $p ) ) { $bad[] = $p; } } if ( $bad ) { fwrite( STDERR, "Package tests or features in the phar:\n" . implode( "\n", $bad ) . "\n" ); exit( 1 ); }'
+          g=$(php easyengine.phar cli version); echo "$g" | tee "$OUT/cli-version.txt"
+          [ "$g" = "EE $RELEASE_VERSION" ] && r=PASS || r=FAIL; echo "$r | build: cli version | exp EE $RELEASE_VERSION | got $g" | tee -a "$RES"
+          rd() { php -r 'echo file_get_contents("phar://" . $argv[1] . "/" . $argv[2]);' easyengine.phar "$1"; }
+          rd img-versions.json > "$OUT/img-versions.json"
+          for kv in $EXPECT_IMG; do k=easyengine/${kv%%=*}; g=$(jq -r --arg k "$k" '.[$k]' "$OUT/img-versions.json")
+            [ "$g" = "${kv#*=}" ] && r=PASS || r=FAIL; echo "$r | build: phar img-versions.json $k | exp ${kv#*=} | got $g" | tee -a "$RES"; done
+          for f in vendor/easyengine/site-command/src/helper/Site_PHP_Compat.php vendor/easyengine/site-command/templates/config/php-fpm/php86.zip; do
+            z=$(php -r 'echo file_exists("phar://" . $argv[1] . "/" . $argv[2]) ? "present" : "missing";' easyengine.phar "$f")
+            [ "$z" = present ] && r=PASS || r=FAIL; echo "$r | build: phar has $f | got $z" | tee -a "$RES"; done
+          g=$(rd php/EE/Migration/Containers.php | grep -cF "const NOT_MIGRATED_IMAGES = [ 'easyengine/compat-scanner' ];")
+          [ "$g" = 1 ] && r=PASS || r=FAIL; echo "$r | build: Containers.php NOT_MIGRATED_IMAGES = compat-scanner | got $g" | tee -a "$RES"
+          g=$(rd migrations/db/20181016052850_easyengine_insert_docker_images_version.php | grep -cF "'easyengine/compat-scanner',")
+          [ "$g" = 1 ] && r=PASS || r=FAIL; echo "$r | build: insert migration skips compat-scanner | got $g" | tee -a "$RES"
+          php -r '$p = new Phar($argv[1]); $p->extractTo($argv[2]);' easyengine.phar "$RUNNER_TEMP/x"
+          for kv in $EXPECT_REFS; do k=${kv%%=*}; e=${kv#*=}
+            g=$(php -r '$a = require $argv[1]; echo $a["versions"][$argv[2]]["reference"];' "$RUNNER_TEMP/x/vendor/composer/installed.php" $k)
+            [ "$g" = "$e" ] && r=PASS || r=FAIL; echo "$r | build: phar installed.php $k reference | exp $e | got $g" | tee -a "$RES"; done
+          (cd "$RUNNER_TEMP/x" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$OUT/phar-files.sha256"
+          Z=$RUNNER_TEMP/x/vendor/easyengine/site-command/templates/config/php-fpm
+          for v in 81 82 83 84 85 86; do echo "php$v.zip newrelic.ini: $(unzip -l "$Z/php$v.zip" | grep -c 'conf.d/newrelic.ini')"; done | tee "$OUT/zip-newrelic.txt"
+          OLDD=$(awk '$1=="OLD_DIGESTS" {print $2}' "$GITHUB_WORKSPACE/wf/$SCRIPTS/knobs.txt")
+          g=$( { grep -rlE "$OLDD" "$RUNNER_TEMP/x" || true; } | wc -l); [ "$g" = 0 ] && r=PASS || r=FAIL; echo "$r | build: files in the phar naming a superseded digest ($OLDD) | exp 0 | got $g" | tee -a "$RES"
+          # Compare with the local RC's file list (GO.env RC_FILES_SHA256, listed in another order, so both are sorted): only COMPOSER_VERSIONS (build timestamp) and installed.php (root version label) may differ.
+          cp "$RUNNER_TEMP/x/COMPOSER_VERSIONS" "$OUT/runner-COMPOSER_VERSIONS"; cp "$RUNNER_TEMP/x/vendor/composer/installed.php" "$OUT/runner-installed.php"
+          nl=$(wc -l < "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256"); nr=$(wc -l < "$OUT/phar-files.sha256")
+          d=$(diff <(sed 's#^[0-9a-f]*  ##' "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256" | LC_ALL=C sort) <(sed 's#^[0-9a-f]*  ##' "$OUT/phar-files.sha256" | LC_ALL=C sort) | grep -c '^[<>]' || true)
+          [ "$d" = 0 ] && r=PASS || r=FAIL; echo "$r | build: phar file list = local RC's ($nl files local, $nr runner) | diff lines $d" | tee -a "$RES"
+          g=$(LC_ALL=C join -j2 <(LC_ALL=C sort -k2 "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256") <(LC_ALL=C sort -k2 "$OUT/phar-files.sha256") | awk '$2!=$3{print $1}' | tr '\n' ' ')
+          [ "$g" = "./COMPOSER_VERSIONS ./vendor/composer/installed.php " ] && r=PASS || r=FAIL; echo "$r | build: files differing from the local RC = COMPOSER_VERSIONS + installed.php | got $g" | tee -a "$RES"
+          cp easyengine.phar "$OUT/"
+          (cd "$OUT" && md5sum easyengine.phar > easyengine.phar.md5 && sha512sum easyengine.phar > easyengine.phar.sha512)
+          { git rev-parse HEAD; composer --version; php -v | head -1; echo "$RELEASE_VERSION"; } > "$OUT/build-info.txt"
+          cat "$OUT/build-info.txt" "$OUT/easyengine.phar.md5" "$OUT/easyengine.phar.sha512"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"; echo "md5=$(cut -d' ' -f1 "$OUT/easyengine.phar.md5")" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise
+        if: always()
+        run: |
+          { echo "## build: $(grep -c '^PASS' "$RES" || true) PASS, $(grep -c '^FAIL' "$RES" || true) FAIL"; echo; echo '```'; cat "$RES"; echo '```'; } > "$OUT/summary.md"
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/summary.md"
+
+      - name: Upload results and phar
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-4160
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+      - name: Fail on any FAIL check
+        if: always()
+        run: "! grep -q '^FAIL' \"$RES\""
+
+  plan:
+    name: pick the legs
+    runs-on: ubuntu-24.04
+    outputs:
+      legs: ${{ steps.p.outputs.legs }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: p
+        run: |
+          l=$(jq -c --rawfile pick "$SCRIPTS/legs.txt" '[.[] | select(.id as $i | ($pick | split("\n") | index($i)))]' "$SCRIPTS/legs-all.json")
+          echo "$l" | jq -r '.[].id'; echo "legs=$l" >> "$GITHUB_OUTPUT"
+
+  leg:
+    name: ${{ matrix.id }}
+    needs: [build, plan]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.legs) }}
+    env:
+      OLD_VERSION: ${{ matrix.old }}
+      SCEN: ${{ matrix.scen }}
+      OLD_PHAR_URL: https://github.com/EasyEngine/easyengine/releases/download/v${{ matrix.old }}/easyengine.phar
+      OLD_PHAR_MD5: 3fe897a69ef1c8cf7f791a11df200b8d
+      JSON_CHANGED: ${{ matrix.json_changed }}
+      JSON_ADDED: ${{ matrix.json_added }}
+      EXPECT_UPDATED: ${{ matrix.expect_updated }}
+      NEW_PHAR_MD5: ${{ needs.build.outputs.md5 }}
+      NEW_VERSION_BUILT: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Free disk space and set paths
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT/phar" "$OUT/rel"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"
+          : > "$OUT/results.txt"; : > "$OUT/done.txt"; chmod 666 "$OUT/results.txt" "$OUT/done.txt"
+          e="nr-pre func-before checks func-after digests"
+          case $SCEN in
+            plain) e="$e rel-cronstart rel-compat rel-img26 rel-img22 rel-nrd rel-sc61 rel-cronend" ;;
+            disabled) e="$e dis-pre dis-post" ;;
+            legacy) e="$e leg-pre leg-post" ;;
+            fail*) e="$e failcheck" ;;
+          esac
+          echo "EXPECT_DONE=$e" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-4160
+          path: ${{ runner.temp }}/build
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+
+      - name: Prepare the host
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq e2fsprogs iptables >/dev/null
+          sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker version --format 'docker {{.Server.Version}}'; docker-compose version; php -v | head -1
+          echo "INFO | host: docker $(docker version --format '{{.Server.Version}}'), docker-compose $(docker-compose version --short), runner image ${ImageVersion:-?}" >> "$RES"
+
+      - name: Get the phars and record both
+        working-directory: wf
+        run: |
+          cp "$RUNNER_TEMP/build/easyengine.phar" "$OUT/phar/easyengine.phar"
+          echo "$NEW_PHAR_MD5  $OUT/phar/easyengine.phar" | md5sum -c -
+          export EXPECT_VERSION=$(echo "$NEW_VERSION_BUILT" | sed 's/[.]/\\./g')
+          curl -fsSL --retry 5 "$OLD_PHAR_URL" -o "$RUNNER_TEMP/ee-old.phar"
+          curl -fsSL --retry 5 "$OLD_PHAR_URL.md5" -o "$OUT/old.md5"; curl -fsSL --retry 5 "$OLD_PHAR_URL.sha512" -o "$OUT/old.sha512"
+          m=$(awk '{print $1; exit}' "$OUT/old.md5"); h=$(awk '{print $1; exit}' "$OUT/old.sha512")
+          echo "$m  $RUNNER_TEMP/ee-old.phar" | md5sum -c -; echo "$h  $RUNNER_TEMP/ee-old.phar" | sha512sum -c -
+          if [ "$OLD_VERSION" = 4.15.0 ]; then [ "$m" = "$OLD_PHAR_MD5" ] && r=PASS || r=FAIL; echo "$r | record: 4.15.0 phar md5 = OLD_PHAR_MD5 | exp $OLD_PHAR_MD5 | got $m" | tee -a "$RES"; fi
+          echo "INFO | record: old phar $OLD_PHAR_URL md5 $m (release asset)" | tee -a "$RES"
+          echo "OLD_MD5=$m" >> "$GITHUB_ENV"
+          bash "$SCRIPTS/record.sh" "$OUT/phar/easyengine.phar" "$RUNNER_TEMP/ee-old.phar"
+          echo "S=sudo --preserve-env=RES,OUT,PHP_EXPECT,IMG_JSON,IMG_OLD_JSON,NEW_VERSION,OLD_VERSION,EXPECT_NEW_MIGRATIONS,EXPECT_UPDATED,SCEN,OLD_MD5" >> "$GITHUB_ENV"
+
+      - name: Install the old EasyEngine
+        run: |
+          sudo install -m 0755 "$RUNNER_TEMP/ee-old.phar" /usr/local/bin/ee
+          ok=0; for i in 1 2 3; do if sudo ee cli info > "$OUT/cli-info-$i.txt" 2>&1; then ok=1; break; fi; cat "$OUT/cli-info-$i.txt"
+            grep -q toomanyrequests "$OUT/cli-info-$i.txt" || break; echo "INFO | install: Docker Hub pull rate limit on attempt $i, retrying in 120 s" | tee -a "$RES"; sleep 120; done
+          cat "$OUT/cli-info-$i.txt" | tee "$OUT/cli-info-old.txt"
+          [ $ok = 1 ] && r=PASS || r=FAIL; echo "$r | install: ee cli info of $OLD_VERSION on this runner | rc of attempt $i" | tee -a "$RES"; [ $ok = 1 ]
+          echo "INFO | install: docker-compose after the $OLD_VERSION install: $(docker-compose version --short 2>&1) at $(command -v docker-compose)" | tee -a "$RES"
+          docker-compose version || {
+            sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose; }
+          sudo docker images --format '{{.Repository}}:{{.Tag}}' | sort > "$OUT/images-after-install.txt"
+
+      - name: Sites on the old version
+        working-directory: wf
+        run: |
+          start=$(date +%s)
+          $S bash "$SCRIPTS/populate.sh" 2>&1 | tee "$OUT/populate.log" | grep -E '^(RC=|CREATE-FAIL|population)' || true
+          echo "population: $(( $(date +%s) - start )) s" | tee "$OUT/populate-seconds.txt"
+          if grep -q CREATE-FAIL "$OUT/populate.log"; then grep CREATE-FAIL "$OUT/populate.log" | sed 's/^/FAIL | population: /' | tee -a "$RES"; exit 1; fi
+          $S bash "$SCRIPTS/nrpre.sh"
+          case $SCEN in disabled) $S bash "$SCRIPTS/dis.sh" pre ;; legacy) $S bash "$SCRIPTS/legacy.sh" pre ;; esac
+          sleep 5
+          $S bash "$SCRIPTS/state.sh" "$OUT/before"
+          $S bash "$SCRIPTS/func.sh" before "$OUT/func-before"
+          sudo cat "$OUT/before/cli-version.txt" "$OUT/before/site-list.txt"
+          df -h / | tail -1
+
+      - name: Failed upgrade (failure legs)
+        if: ${{ startsWith(matrix.scen, 'fail') }}
+        working-directory: wf
+        run: |
+          sudo mkdir -p "$OUT/fail"; sudo rm -f /var/tmp/ext-fault-fired.txt
+          case $SCEN in
+            failpull) sudo bash "$SCRIPTS/block.sh" on | tee "$OUT/fault-arm.txt"; sudo bash "$SCRIPTS/block.sh" check | sudo tee "$OUT/fail/block-check.txt" ;;
+            failpull-mid) sudo bash "$SCRIPTS/fault.sh" mid u6-wp83.test | tee "$OUT/fault-arm.txt" ;;
+            faillate-site) sudo bash "$SCRIPTS/fault.sh" site u6-wp83.test | tee "$OUT/fault-arm.txt" ;;
+            faillate) sudo bash "$SCRIPTS/fault.sh" late | tee "$OUT/fault-arm.txt" ;;
+          esac
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/fail" "$OUT/phar/easyengine.phar" || true
+          sudo bash "$SCRIPTS/fault.sh" off | tee "$OUT/fault-off.txt"
+          sudo cat /var/tmp/ext-fault-fired.txt 2>/dev/null | sudo tee "$OUT/fault-fired.txt" || true
+          sleep 5
+          $S bash "$SCRIPTS/state.sh" "$OUT/afterfail"
+          $S bash "$SCRIPTS/failcheck.sh" $SCEN "$OUT/before" "$OUT/fail" "$OUT/afterfail"
+          sudo grep -E 'Error while|Unable to pull|Reverting (upgrade|disable|backup)|fault' "$OUT/fail/ee.log.part" | head -40 || true
+
+      - name: Upgrade to the release phar (what ee cli update does; the retry on failure legs)
+        id: upgrade
+        working-directory: wf
+        run: |
+          $S bash "$SCRIPTS/upgrade.sh" "$OUT/upgrade" "$OUT/phar/easyengine.phar"
+          sudo cat "$OUT/upgrade/cliinfo.out" | tail -20
+
+      - name: State after and checks
+        if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
+        working-directory: wf
+        run: |
+          sleep 5
+          $S bash "$SCRIPTS/state.sh" "$OUT/after"
+          $S bash "$SCRIPTS/checks.sh" "$OUT/before" "$OUT/upgrade" "$OUT/after"
+          v=$(docker-compose version --short 2>&1); [[ $v =~ ^2\.(2[6-9]|[3-9][0-9])\. ]] && r=PASS || r=FAIL; echo "$r | after: docker-compose >= 2.26.1 | got $v at $(command -v docker-compose)" | tee -a "$RES"
+          case $SCEN in disabled) $S bash "$SCRIPTS/dis.sh" post "$OUT/upgrade" ;; legacy) $S bash "$SCRIPTS/legacy.sh" post ;; esac
+          $S bash "$SCRIPTS/func.sh" after "$OUT/func-after"
+
+      - name: Release-specific checks (older stables)
+        if: ${{ !cancelled() && steps.upgrade.outcome == 'success' && matrix.scen == 'plain' }}
+        working-directory: wf
+        run: |
+          for p in cronstart compat img26 img22 nrd sc61 cronend; do echo "::group::rel.sh $p"; s=$(date +%s)
+            $S bash "$SCRIPTS/rel.sh" $p 2>&1 | tail -60; echo "rel.sh $p: $(( $(date +%s) - s )) s" | tee -a "$OUT/rel/seconds.txt"; echo "::endgroup::"; done
+          df -h / | tail -1
+
+      - name: Collect and summarise
+        if: always()
+        working-directory: wf
+        run: |
+          set +e
+          touch /tmp/u6-stop-probe
+          sudo bash "$SCRIPTS/fault.sh" off > /dev/null 2>&1
+          $S bash "$SCRIPTS/digests.sh"
+          for n in $EXPECT_DONE; do grep -qx "DONE $n" "$OUT/done.txt" || echo "FAIL | harness: $n did not complete" | tee -a "$RES"; done
+          sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"' _ "$OUT"
+          for s in $(sudo ls /opt/easyengine/sites 2>/dev/null); do mkdir -p "$OUT/logs/$s"; sudo cp -rL /opt/easyengine/sites/"$s"/logs/. "$OUT/logs/$s/" 2>/dev/null; sudo cp /opt/easyengine/sites/"$s"/docker-compose.yml "$OUT/logs/$s/" 2>/dev/null; done
+          sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$OUT/containers-final.txt"
+          sudo docker images --format '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}' | sort > "$OUT/images-final.txt"
+          sudo sqlite3 /opt/easyengine/db/ee.sqlite "select key,value from options where key like 'easyengine/%' or key='version' order by key" > "$OUT/options-final.txt"
+          df -h / > "$OUT/df-final.txt"
+          sudo chown -R "$USER" "$OUT"
+          {
+            echo "## ${{ matrix.id }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL, $(grep -c '^KNOWN' "$RES") KNOWN"
+            echo; echo '### FAIL'; echo '```'; grep '^FAIL' "$RES"; echo '```'
+            echo; echo '### KNOWN'; echo '```'; grep '^KNOWN' "$RES"; echo '```'
+            echo; echo '### All'; echo '```'; cat "$RES"; echo '```'
+          } > "$OUT/summary.md"
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"; head -300 "$OUT/summary.md"
+          exit 0
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.id }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+      - name: Fail on any FAIL check
+        if: always()
+        run: "! grep -q '^FAIL' \"$RES\""
