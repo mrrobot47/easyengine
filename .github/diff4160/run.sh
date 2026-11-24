@@ -1,11 +1,13 @@
 #!/bin/bash
 # run.sh <shard> <side>: side stable|stable2 (A/A control) = 4.15.0 throughout, rc = the RC throughout,
 # upgrade = create on 4.15.0, upgrade to the RC the way `ee cli update` does, then the commands on the RC.
-# Env: OUT, STABLE_PHAR, RC_PHAR. Run as root.
+# Env: OUT, STABLE_PHAR, RC_PHAR, OLD_DIR (ee-<ver>.phar). Run as root.
 SHARD=$1; SIDE=$2
 . "$(dirname "$0")/lib.sh"; . "$F/s-$SHARD.sh"; cd /tmp
 echo "$SHARD $SIDE" > $OUT/side.txt
+# from<ver>-<stable|rc>: create on the older release <ver>, then upgrade to 4.15.0 or to the RC.
 first=$STABLE_PHAR; [ "$SIDE" = rc ] && first=$RC_PHAR
+case $SIDE in from*-*) first=$OLD_DIR/ee-${SIDE%%-*}.phar; first=${first/ee-from/ee-}; TARGET=$STABLE_PHAR; [ "${SIDE##*-}" = rc ] && TARGET=$RC_PHAR ;; upgrade) TARGET=$RC_PHAR ;; esac
 install -m 0755 "$first" /usr/local/bin/ee
 md5sum /usr/local/bin/ee > $OUT/phar-first.md5
 ok=0; for i in 1 2 3; do timeout 1500 ee cli info < /dev/null > $OUT/install-$i.txt 2>&1 && { ok=1; break; }
@@ -17,8 +19,8 @@ st cfg-rclone config set rclone-path easyengine:/var/eebackups
 snap init
 create
 snap created
-if [ "$SIDE" = upgrade ]; then
-  T=/tmp/ee_upg.phar; cp "$RC_PHAR" $T; s=$(date +%s)
+if [ -n "${TARGET:-}" ]; then
+  T=/tmp/ee_upg.phar; cp "$TARGET" $T; s=$(date +%s)
   { echo '$ php ee_new.phar cli info'; timeout 3000 php $T cli info < /dev/null 2>&1; r=$?; echo "rc=$r"; } > $OUT/steps/upgrade.out
   [ $r = 0 ] && chmod 0755 $T && mv $T /usr/local/bin/ee
   printf 'upgrade\t%s\t%s\tphp rc.phar cli info\n' $r $(( $(date +%s) - s )) >> $OUT/steps.tsv

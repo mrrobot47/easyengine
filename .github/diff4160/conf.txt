@@ -1,18 +1,3 @@
 CORE_SHA 7765d9f640762bcb2f41462d18390158a0a61e4b
-RUN wp stable
-RUN wp rc
-RUN wp upgrade
-RUN phphtml stable
-RUN phphtml rc
-RUN phphtml upgrade
-RUN newphp stable
-RUN newphp rc
-RUN newphp upgrade
-RUN oldphp stable
-RUN oldphp rc
-RUN oldphp upgrade
-RUN globals stable
-RUN globals rc
-RUN globals upgrade
-RUN wp stable2
-RUN newphp stable2
+RUN sidmig from4133-stable
+RUN sidmig from4133-rc

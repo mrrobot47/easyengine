@@ -66,7 +66,10 @@ jobs:
           jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock | tee $OUT/rc-refs.txt
           curl -fsSL --retry 5 "$STABLE_URL" -o $OUT/stable.phar
           echo "$STABLE_MD5  $OUT/stable.phar" | md5sum -c -
-          (cd $OUT && md5sum rc.phar stable.phar | tee phars.md5)
+          curl -fsSL --retry 5 https://github.com/EasyEngine/easyengine/releases/download/v4.13.3/easyengine.phar -o $OUT/ee-4133.phar
+          curl -fsSL --retry 5 https://github.com/EasyEngine/easyengine/releases/download/v4.13.3/easyengine.phar.md5 -o $OUT/ee-4133.md5
+          echo "$(awk '{print $1; exit}' $OUT/ee-4133.md5)  $OUT/ee-4133.phar" | md5sum -c -
+          (cd $OUT && md5sum rc.phar stable.phar ee-4133.phar | tee phars.md5)
           for p in stable rc; do sudo php $OUT/$p.phar cli cmd-dump > $OUT/cmd-dump-$p.json 2> $OUT/cmd-dump-$p.err || true; ls -la $OUT/cmd-dump-$p.json; done
           php -r '$p = new Phar($argv[1]); $p->extractTo($argv[2]);' $OUT/rc.phar $RUNNER_TEMP/x
           (cd $RUNNER_TEMP/x && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > $OUT/rc-files.sha256
@@ -112,8 +115,8 @@ jobs:
       - name: Scenario
         working-directory: wf
         run: |
-          export OUT=$RUNNER_TEMP/out STABLE_PHAR=$RUNNER_TEMP/phars/stable.phar RC_PHAR=$RUNNER_TEMP/phars/rc.phar; mkdir -p $OUT
-          sudo --preserve-env=OUT,STABLE_PHAR,RC_PHAR,COMPOSE_INTERACTIVE_NO_CLI bash $SCRIPTS/run.sh ${{ matrix.shard }} ${{ matrix.side }} 2>&1 | tee $RUNNER_TEMP/run.log
+          export OUT=$RUNNER_TEMP/out STABLE_PHAR=$RUNNER_TEMP/phars/stable.phar RC_PHAR=$RUNNER_TEMP/phars/rc.phar OLD_DIR=$RUNNER_TEMP/phars; mkdir -p $OUT
+          sudo --preserve-env=OUT,STABLE_PHAR,RC_PHAR,OLD_DIR,COMPOSE_INTERACTIVE_NO_CLI bash $SCRIPTS/run.sh ${{ matrix.shard }} ${{ matrix.side }} 2>&1 | tee $RUNNER_TEMP/run.log
       - name: Collect
         if: always()
         run: |
