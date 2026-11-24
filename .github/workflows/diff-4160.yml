@@ -28,11 +28,13 @@ jobs:
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
       core_sha: ${{ steps.m.outputs.core_sha }}
+      core_sha_old: ${{ steps.m.outputs.core_sha_old }}
     steps:
       - uses: actions/checkout@v7
       - id: m
         run: |
-          c=$(awk '$1=="CORE_SHA"{print $2}' $SCRIPTS/conf.txt)
+          c=$(awk '$1=="CORE_SHA"{print $2}' $SCRIPTS/conf.txt); o=$(awk '$1=="CORE_SHA_OLD"{print $2}' $SCRIPTS/conf.txt)
+          echo "core_sha_old=$o" >> "$GITHUB_OUTPUT"
           m=$(awk '$1=="RUN"{printf "%s{\"shard\":\"%s\",\"side\":\"%s\"}", (n++?",":""), $2, $3}' $SCRIPTS/conf.txt)
           echo "core_sha=$c" >> "$GITHUB_OUTPUT"; echo "matrix={\"include\":[$m]}" >> "$GITHUB_OUTPUT"; echo "core $c matrix [$m]"
 
@@ -49,6 +51,12 @@ jobs:
           repository: EasyEngine/easyengine
           ref: ${{ needs.plan.outputs.core_sha }}
           path: core
+      - uses: actions/checkout@v7
+        if: ${{ needs.plan.outputs.core_sha_old != '' }}
+        with:
+          repository: EasyEngine/easyengine
+          ref: ${{ needs.plan.outputs.core_sha_old }}
+          path: core-old
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -63,6 +71,7 @@ jobs:
           php -dphar.readonly=0 utils/make-phar.php easyengine.phar
           php easyengine.phar cli version | tee $OUT/rc-version.txt
           cp easyengine.phar $OUT/rc.phar
+          if [ -d ../core-old ]; then (cd ../core-old && git rev-parse HEAD > $OUT/core-sha-old.txt && composer install --no-dev --no-progress --no-interaction -q && php -dphar.readonly=0 utils/make-phar.php easyengine.phar > /dev/null && cp easyengine.phar $OUT/rcold.phar); fi
           jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock | tee $OUT/rc-refs.txt
           curl -fsSL --retry 5 "$STABLE_URL" -o $OUT/stable.phar
           echo "$STABLE_MD5  $OUT/stable.phar" | md5sum -c -
@@ -86,6 +95,7 @@ jobs:
     timeout-minutes: 200
     strategy:
       fail-fast: false
+      max-parallel: 12
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - name: Free disk space
@@ -108,6 +118,9 @@ jobs:
       - name: Prepare the host
         run: |
           sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          # Docker Hub's anonymous pull limit hit one job in run 4: pull through Google's Hub mirror first (same manifests and digests), Hub as fallback.
+          { sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json && sudo cp /tmp/daemon.json /etc/docker/daemon.json && cat /etc/docker/daemon.json
+          sudo systemctl restart docker && docker info --format '{{.RegistryConfig.Mirrors}}'
           sudo apt-get install -y -qq sqlite3 jq rclone >/dev/null
           sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
@@ -115,8 +128,8 @@ jobs:
       - name: Scenario
         working-directory: wf
         run: |
-          export OUT=$RUNNER_TEMP/out STABLE_PHAR=$RUNNER_TEMP/phars/stable.phar RC_PHAR=$RUNNER_TEMP/phars/rc.phar OLD_DIR=$RUNNER_TEMP/phars; mkdir -p $OUT
-          sudo --preserve-env=OUT,STABLE_PHAR,RC_PHAR,OLD_DIR,COMPOSE_INTERACTIVE_NO_CLI bash $SCRIPTS/run.sh ${{ matrix.shard }} ${{ matrix.side }} 2>&1 | tee $RUNNER_TEMP/run.log
+          export OUT=$RUNNER_TEMP/out STABLE_PHAR=$RUNNER_TEMP/phars/stable.phar RC_PHAR=$RUNNER_TEMP/phars/rc.phar RCOLD_PHAR=$RUNNER_TEMP/phars/rcold.phar OLD_DIR=$RUNNER_TEMP/phars; mkdir -p $OUT
+          sudo --preserve-env=OUT,STABLE_PHAR,RC_PHAR,RCOLD_PHAR,OLD_DIR,COMPOSE_INTERACTIVE_NO_CLI bash $SCRIPTS/run.sh ${{ matrix.shard }} ${{ matrix.side }} 2>&1 | tee $RUNNER_TEMP/run.log
       - name: Collect
         if: always()
         run: |

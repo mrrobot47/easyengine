@@ -1,5 +1,2 @@
 CORE_SHA 7765d9f640762bcb2f41462d18390158a0a61e4b
-RUN globals stable
-RUN globals rc
-RUN oldphp stable
-RUN oldphp rc
+RUN ssl rc

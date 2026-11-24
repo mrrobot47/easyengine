@@ -6,12 +6,12 @@ SHARD=$1; SIDE=$2
 . "$(dirname "$0")/lib.sh"; . "$F/s-$SHARD.sh"; cd /tmp
 echo "$SHARD $SIDE" > $OUT/side.txt
 # from<ver>-<stable|rc>: create on the older release <ver>, then upgrade to 4.15.0 or to the RC.
-first=$STABLE_PHAR; [ "$SIDE" = rc ] && first=$RC_PHAR
+first=$STABLE_PHAR; [ "$SIDE" = rc ] && first=$RC_PHAR; [ "$SIDE" = rcold ] && first=$RCOLD_PHAR
 case $SIDE in from*-*) first=$OLD_DIR/ee-${SIDE%%-*}.phar; first=${first/ee-from/ee-}; TARGET=$STABLE_PHAR; [ "${SIDE##*-}" = rc ] && TARGET=$RC_PHAR ;; upgrade) TARGET=$RC_PHAR ;; esac
 install -m 0755 "$first" /usr/local/bin/ee
 md5sum /usr/local/bin/ee > $OUT/phar-first.md5
 ok=0; for i in 1 2 3; do timeout 1500 ee cli info < /dev/null > $OUT/install-$i.txt 2>&1 && { ok=1; break; }
-  grep -q toomanyrequests $OUT/install-$i.txt || break; echo "INFRA install rate limit attempt $i" >> $OUT/infra.txt; sleep 120; done
+  grep -q toomanyrequests $OUT/install-$i.txt || break; echo "INFRA install rate limit attempt $i" >> $OUT/infra.txt; sleep 180; done
 [ $ok = 1 ] || { echo "install failed"; cat $OUT/install-$i.txt; exit 1; }
 # Local-only backups: a local-type rclone remote on the runner.
 mkdir -p /root/.config/rclone /var/eebackups; printf '[easyengine]\ntype = local\n' > /root/.config/rclone/rclone.conf
