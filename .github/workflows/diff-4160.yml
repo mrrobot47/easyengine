@@ -1,0 +1,129 @@
+# v4.16.0 release differential: the same scenario scripts on stable 4.15.0, on the RC built from CORE_SHA, and as an upgrade (create on 4.15.0, upgrade, commands on the RC).
+# Raw outputs and state snapshots are uploaded per (shard, side); the normalisation and the diff run offline (testing/ci-scripts/diff-4160/local-tools).
+# Temp branch tmp/diff-4160 on mrrobot47/easyengine: this file as .github/workflows/diff-4160.yml, ../ci-scripts/diff-4160/ as .github/diff4160/ (conf.txt = core SHA + matrix).
+name: v4.16.0 release differential
+
+on:
+  push:
+    branches:
+      - 'tmp/diff-4160'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SCRIPTS: .github/diff4160
+  STABLE_URL: https://github.com/EasyEngine/easyengine/releases/download/v4.15.0/easyengine.phar
+  STABLE_MD5: 3fe897a69ef1c8cf7f791a11df200b8d
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      core_sha: ${{ steps.m.outputs.core_sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: m
+        run: |
+          c=$(awk '$1=="CORE_SHA"{print $2}' $SCRIPTS/conf.txt)
+          m=$(awk '$1=="RUN"{printf "%s{\"shard\":\"%s\",\"side\":\"%s\"}", (n++?",":""), $2, $3}' $SCRIPTS/conf.txt)
+          echo "core_sha=$c" >> "$GITHUB_OUTPUT"; echo "matrix={\"include\":[$m]}" >> "$GITHUB_OUTPUT"; echo "core $c matrix [$m]"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+      - uses: actions/checkout@v7
+        with:
+          repository: EasyEngine/easyengine
+          ref: ${{ needs.plan.outputs.core_sha }}
+          path: core
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:2.10.3
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+      - name: Build the RC phar and fetch stable
+        run: |
+          OUT=$RUNNER_TEMP/out; mkdir -p $OUT
+          cd core; git rev-parse HEAD | tee $OUT/core-sha.txt
+          composer install --no-dev --no-progress --no-interaction
+          php -dphar.readonly=0 utils/make-phar.php easyengine.phar
+          php easyengine.phar cli version | tee $OUT/rc-version.txt
+          cp easyengine.phar $OUT/rc.phar
+          jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock | tee $OUT/rc-refs.txt
+          curl -fsSL --retry 5 "$STABLE_URL" -o $OUT/stable.phar
+          echo "$STABLE_MD5  $OUT/stable.phar" | md5sum -c -
+          (cd $OUT && md5sum rc.phar stable.phar | tee phars.md5)
+          for p in stable rc; do sudo php $OUT/$p.phar cli cmd-dump > $OUT/cmd-dump-$p.json 2> $OUT/cmd-dump-$p.err || true; ls -la $OUT/cmd-dump-$p.json; done
+          php -r '$p = new Phar($argv[1]); $p->extractTo($argv[2]);' $OUT/rc.phar $RUNNER_TEMP/x
+          (cd $RUNNER_TEMP/x && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > $OUT/rc-files.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: phars
+          path: ${{ runner.temp }}/out
+          retention-days: 7
+
+  run:
+    name: ${{ matrix.shard }} / ${{ matrix.side }}
+    needs: [plan, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+      - uses: actions/download-artifact@v8
+        with:
+          name: phars
+          path: ${{ runner.temp }}/phars
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+      - name: Prepare the host
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq rclone >/dev/null
+          sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker version --format 'docker {{.Server.Version}}'; docker-compose version; rclone version | head -1
+      - name: Scenario
+        working-directory: wf
+        run: |
+          export OUT=$RUNNER_TEMP/out STABLE_PHAR=$RUNNER_TEMP/phars/stable.phar RC_PHAR=$RUNNER_TEMP/phars/rc.phar; mkdir -p $OUT
+          sudo --preserve-env=OUT,STABLE_PHAR,RC_PHAR,COMPOSE_INTERACTIVE_NO_CLI bash $SCRIPTS/run.sh ${{ matrix.shard }} ${{ matrix.side }} 2>&1 | tee $RUNNER_TEMP/run.log
+      - name: Collect
+        if: always()
+        run: |
+          OUT=$RUNNER_TEMP/out; sudo mkdir -p $OUT; sudo cp $RUNNER_TEMP/run.log $OUT/ 2>/dev/null
+          for s in $(sudo ls /opt/easyengine/sites 2>/dev/null); do sudo mkdir -p $OUT/sitelogs/$s; sudo cp -rL /opt/easyengine/sites/$s/logs/. $OUT/sitelogs/$s/ 2>/dev/null; done
+          df -h / | sudo tee $OUT/df.txt; sudo chown -R "$USER" $OUT
+          awk -F'\t' '$2!=0' $OUT/steps.tsv | head -60 || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: diff-${{ matrix.shard }}-${{ matrix.side }}
+          path: ${{ runner.temp }}/out
+          retention-days: 7
