@@ -2,7 +2,8 @@
 # Rearrange a freshly created wp site into a layout EE doesn't record (it only knows site_container_fs_path). Usage: layout.sh current|subdir <site>
 #   current: site created with --public-dir=current; WordPress moves to htdocs/releases/1 and `current` becomes a relative symlink to it
 #            (CI/CD deploy style); wp-config.php (EE keeps it one level above the public dir) is symlinked into the release, as deploy tools share it.
-#   subdir:  "Giving WordPress its own directory": core in htdocs/wp/, htdocs/index.php loads wp/wp-blog-header.php, siteurl = /wp, and a
+#   subdir:  "Giving WordPress its own directory": core and wp-content in htdocs/wp/ (run 2: wp-content left in htdocs without WP_CONTENT_DIR
+#            gave a blank front page, no theme), htdocs/index.php loads wp/wp-blog-header.php, siteurl = /wp, and a
 #            copy of EE's /var/www/wp-config.php in htdocs (WordPress looks one level above ABSPATH; WP-CLI refuses a require shim).
 . "$(dirname "$0")/lib.sh"; M=$1; S=$2
 cd $SITES_DIR/$S || exit 1
@@ -17,7 +18,7 @@ SH
 subdir) docker-compose exec -T --user=www-data php sh -e <<SH
 cd /var/www/htdocs
 mkdir wp
-for f in * ; do case "\$f" in wp|wp-content|f5*.php) continue ;; esac; mv "\$f" wp/; done
+for f in * ; do case "\$f" in wp|f5*.php) continue ;; esac; mv "\$f" wp/; done
 sed 's#/wp-blog-header.php#/wp/wp-blog-header.php#' wp/index.php > index.php
 if [ -e /var/www/wp-config.php ]; then cp -p /var/www/wp-config.php wp-config.php; fi
 wp --path=/var/www/htdocs/wp option update siteurl http://$S/wp

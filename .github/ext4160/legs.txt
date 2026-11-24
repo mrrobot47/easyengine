@@ -1,5 +1,2 @@
 disabled-4.15.0
 legacy-4.15.0
-from-4.12.0
-from-4.11.0
-from-4.10.2

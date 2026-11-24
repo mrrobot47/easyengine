@@ -38,7 +38,7 @@ pre)
   echo release-1 > $SITES_DIR/$LCUR/app/htdocs/releases/1/u6-release.txt; chown 33:33 $SITES_DIR/$LCUR/app/htdocs/releases/1/u6-release.txt
   c create-$LSUB site create $LSUB --type=wp --php=8.4 --title=u6$(cname $LSUB | sed 's/^u6//') $W; chk "$L: create $LSUB (wp, to move into wp/) rc" 0 "$RC"
   bash $F/layout.sh subdir $LSUB > $D/layout-$LSUB.txt 2>&1; chk "$L: layout subdir on $LSUB rc" 0 "$?"
-  plugfix $LCUR releases/1/wp-content; plugfix $LSUB wp-content; plugfix $LPW web/wp-content
+  plugfix $LCUR releases/1/wp-content; plugfix $LSUB wp/wp-content; plugfix $LPW web/wp-content
   # 7.1: no easyengine/php7.1 image and not in --php's options.
   c create-71 site create u6-l71.test --type=php --php=7.1; chk "$L: create --php=7.1 refused rc" '[1-9][0-9]*' "$RC"
   info "$L: --php=7.1 message: $(grep -v '^rc=' $D/create-71.out | head -2 | tr '\n' ' ' | cut -c1-200)"; eqs "$L: nothing left of u6-l71.test" "$NOLEFT" "$(leftovers u6-l71.test)"

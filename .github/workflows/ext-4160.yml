@@ -109,11 +109,13 @@ jobs:
           g=$( { grep -rlE "$OLDD" "$RUNNER_TEMP/x" || true; } | wc -l); [ "$g" = 0 ] && r=PASS || r=FAIL; echo "$r | build: files in the phar naming a superseded digest ($OLDD) | exp 0 | got $g" | tee -a "$RES"
           # Compare with the local RC's file list (GO.env RC_FILES_SHA256, listed in another order, so both are sorted): only COMPOSER_VERSIONS (build timestamp) and installed.php (root version label) may differ.
           cp "$RUNNER_TEMP/x/COMPOSER_VERSIONS" "$OUT/runner-COMPOSER_VERSIONS"; cp "$RUNNER_TEMP/x/vendor/composer/installed.php" "$OUT/runner-installed.php"
-          nl=$(wc -l < "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256"); nr=$(wc -l < "$OUT/phar-files.sha256")
-          d=$(diff <(sed 's#^[0-9a-f]*  ##' "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256" | LC_ALL=C sort) <(sed 's#^[0-9a-f]*  ##' "$OUT/phar-files.sha256" | LC_ALL=C sort) | grep -c '^[<>]' || true)
-          [ "$d" = 0 ] && r=PASS || r=FAIL; echo "$r | build: phar file list = local RC's ($nl files local, $nr runner) | diff lines $d" | tee -a "$RES"
-          g=$(LC_ALL=C join -j2 <(LC_ALL=C sort -k2 "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256") <(LC_ALL=C sort -k2 "$OUT/phar-files.sha256") | awk '$2!=$3{print $1}' | tr '\n' ' ')
-          [ "$g" = "./COMPOSER_VERSIONS ./vendor/composer/installed.php " ] && r=PASS || r=FAIL; echo "$r | build: files differing from the local RC = COMPOSER_VERSIONS + installed.php | got $g" | tee -a "$RES"
+          if [ -s "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256" ]; then
+            nl=$(wc -l < "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256"); nr=$(wc -l < "$OUT/phar-files.sha256")
+            d=$(diff <(sed 's#^[0-9a-f]*  ##' "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256" | LC_ALL=C sort) <(sed 's#^[0-9a-f]*  ##' "$OUT/phar-files.sha256" | LC_ALL=C sort) | grep -c '^[<>]' || true)
+            [ "$d" = 0 ] && r=PASS || r=FAIL; echo "$r | build: phar file list = local RC's ($nl files local, $nr runner) | diff lines $d" | tee -a "$RES"
+            g=$(LC_ALL=C join -j2 <(LC_ALL=C sort -k2 "$GITHUB_WORKSPACE/wf/$SCRIPTS/local-phar-files.sha256") <(LC_ALL=C sort -k2 "$OUT/phar-files.sha256") | awk '$2!=$3{print $1}' | tr '\n' ' ')
+            [ "$g" = "./COMPOSER_VERSIONS ./vendor/composer/installed.php " ] && r=PASS || r=FAIL; echo "$r | build: files differing from the local RC = COMPOSER_VERSIONS + installed.php | got $g" | tee -a "$RES"
+          else echo "INFO | build: no local RC file list (intermediate head), compare skipped" | tee -a "$RES"; fi
           cp easyengine.phar "$OUT/"
           (cd "$OUT" && md5sum easyengine.phar > easyengine.phar.md5 && sha512sum easyengine.phar > easyengine.phar.sha512)
           { git rev-parse HEAD; composer --version; php -v | head -1; echo "$RELEASE_VERSION"; } > "$OUT/build-info.txt"
@@ -230,6 +232,7 @@ jobs:
 
       - name: Install the old EasyEngine
         run: |
+          sudo --preserve-env=RES bash wf/$SCRIPTS/prepull.sh "$IMG_OLD_JSON" "$SCEN"
           sudo install -m 0755 "$RUNNER_TEMP/ee-old.phar" /usr/local/bin/ee
           ok=0; for i in 1 2 3; do if sudo ee cli info > "$OUT/cli-info-$i.txt" 2>&1; then ok=1; break; fi; cat "$OUT/cli-info-$i.txt"
             grep -q toomanyrequests "$OUT/cli-info-$i.txt" || break; echo "INFO | install: Docker Hub pull rate limit on attempt $i, retrying in 120 s" | tee -a "$RES"; sleep 120; done

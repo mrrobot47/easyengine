@@ -30,7 +30,7 @@ pre)
   bash $F/layout.sh current $DCUR > $D/layout-$DCUR.txt 2>&1; chk "dis pre: layout current on $DCUR rc" 0 "$?"
   echo release-1 > $SITES_DIR/$DCUR/app/htdocs/releases/1/u6-release.txt; chown 33:33 $SITES_DIR/$DCUR/app/htdocs/releases/1/u6-release.txt
   bash $F/layout.sh subdir $DSUB > $D/layout-$DSUB.txt 2>&1; chk "dis pre: layout subdir on $DSUB rc" 0 "$?"
-  plugfix $DCUR releases/1/wp-content; plugfix $DSUB wp-content; mkdir -p $SITES_DIR/$DPP/app/htdocs/public/legacy
+  plugfix $DCUR releases/1/wp-content; plugfix $DSUB wp/wp-content; mkdir -p $SITES_DIR/$DPP/app/htdocs/public/legacy
   printf '<?php\n$f = create_function( %s, %s );\neach( $a );\n' "''" "'return 1;'" > $SITES_DIR/$DPP/app/htdocs/public/legacy/legacy.php; chown -R 33:33 $SITES_DIR/$DPP/app/htdocs/public/legacy
   for s in $DIS_ALL; do page_ok "dis pre" $s; done
   for s in $D82 $D83 $D84; do info "dis pre: $s .env $(setkey $s $NRKEY)"; done
