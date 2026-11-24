@@ -43,11 +43,12 @@ snap() { local L=$1 D=$OUT/snap/$1 s c t; mkdir -p $D/sites $D/ctr; sleep 3
       echo "--- env"; docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' $c | sort
       echo "--- networks"; docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' $c | sort
       echo "--- image digests"; docker image inspect -f '{{join .RepoDigests " "}}' "$(docker inspect -f '{{.Image}}' $c)"; } > $D/ctr/$c.txt 2>&1
+    [ "$(docker inspect -f '{{.State.Status}}' $c)" = running ] || docker logs --tail 30 $c > $D/ctr/$c.notrunning.log 2>&1
   done > $D/containers.txt
   docker images --format '{{.Repository}}:{{.Tag}}' | sort > $D/images.txt
   for s in $(ls $SITES 2>/dev/null); do mkdir -p $D/sites/$s
     (cd $SITES/$s && for f in docker-compose*.yml .env wp-cli.yml app/wp-cli.yml; do [ -f $f ] && { echo "=== $f"; cat $f; }; done
-      for f in $(find user-docker-compose config -type f 2>/dev/null | grep -vE '\.(gz|log)$|/php\.ini$' | sort); do echo "=== $f"; cat $f; done
+      for f in $(find -L user-docker-compose config -type f 2>/dev/null | grep -vE '\.(gz|log|pem|key|crt)$|/php\.ini(-development|-production)?$' | sort); do echo "=== $f"; cat $f; done
       echo "=== php.ini md5 / sid lines"; for f in $(find -L config/php -name php.ini 2>/dev/null); do echo "$f $(md5sum < $f | cut -c1-32)"; grep -nE '^\s*session\.sid' $f; done
       echo "=== tree"; find . -maxdepth 4 \( -path ./app/htdocs/wp-content -o -path ./app/htdocs/wp-includes -o -path ./app/htdocs/wp-admin -o -path ./logs -o -path '*/wp-includes' -o -path '*/wp-admin' -o -path '*/wp-content' \) -prune -o -printf '%M %u:%g %p %l\n' | sort -k3) > $D/sites/$s/files.txt 2>&1
     docker exec $(cname $s)-nginx-1 nginx -T > $D/sites/$s/nginx-T.txt 2> $D/sites/$s/nginx-T.err
@@ -63,6 +64,8 @@ snap() { local L=$1 D=$OUT/snap/$1 s c t; mkdir -p $D/sites $D/ctr; sleep 3
   ee cron list --all < /dev/null > $D/cron-list.txt 2>&1
   ee cli version < /dev/null > $D/cli-version.txt 2>&1
   echo "[$(ts)] snap $L"; }
+# cid <command substring>: id of the first cron job whose command contains it.
+cid() { local q=${1//\'/\'\'}; db "select id from cron where command like '%$q%' order by id limit 1"; }
 # sidini <site>: the php.ini in the site's php config.
 sidini() { find -L $SITES/$1/config/php -name php.ini | head -1; }
 # setkey <site> <key>: NEWRELIC_LICENSE_KEY in the site's .env.

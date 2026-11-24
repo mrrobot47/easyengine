@@ -22,10 +22,15 @@ cmds() {
   st cron-list cron list --all
   st cron-list-g1 cron list g1.test
   st cron-upd1 cron update 1 --schedule='@every 20m'
-  st cron-upd3-user0 cron update 3 --user=0 --command='id -u'
+  # Ids by command: WordPress sites add their own wp-cron job, so fixed ids hit other jobs.
+  sh_st cron-upd-user0 ". $F/lib.sh; i=\$(cid 'id -un'); echo id=\$i; ee cron update \$i --user=0 < /dev/null; echo rc=\$?; db \"select site_url,user,command from cron where id=\$i\""
+  sh_st cron-upd-user0-cmd ". $F/lib.sh; i=\$(cid 'id -un'); ee cron update \$i --user=0 --command='id -u -n' < /dev/null; echo rc=\$?; db \"select site_url,user,command from cron where id=\$i\""
+  sh_st cron-run-user0 ". $F/lib.sh; i=\$(cid \"'id -u'\"); echo id=\$i; ee cron run-now \$i < /dev/null; echo rc=\$?"
+  sh_st cron-run-userx ". $F/lib.sh; i=\$(cid 'id -u -n'); echo id=\$i; ee cron run-now \$i < /dev/null; echo rc=\$?"
+  sh_st cron-upd-host-user ". $F/lib.sh; i=\$(cid \"'date'\"); echo id=\$i; ee cron update \$i --user=0 < /dev/null; echo rc=\$?"
   st cron-upd2-empty cron update 2 --command=''
   st cron-upd2 cron update 2 --command='date -u'
-  st cron-run3 cron run-now 3
+  sh_st cron-run-host ". $F/lib.sh; i=\$(cid 'date -u'); echo id=\$i; ee cron run-now \$i < /dev/null | sed -E 's/[0-9]{2}:[0-9]{2}:[0-9]{2}/T/'; echo rc=\$?"
   st cron-run1 cron run-now 1
   snap after-cron
   st cron-del2 cron delete 2
