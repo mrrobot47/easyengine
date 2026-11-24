@@ -30,6 +30,8 @@ pre)
   bash $F/layout.sh current $DCUR > $D/layout-$DCUR.txt 2>&1; chk "dis pre: layout current on $DCUR rc" 0 "$?"
   echo release-1 > $SITES_DIR/$DCUR/app/htdocs/releases/1/u6-release.txt; chown 33:33 $SITES_DIR/$DCUR/app/htdocs/releases/1/u6-release.txt
   bash $F/layout.sh subdir $DSUB > $D/layout-$DSUB.txt 2>&1; chk "dis pre: layout subdir on $DSUB rc" 0 "$?"
+  plugfix $DCUR releases/1/wp-content; plugfix $DSUB wp-content; mkdir -p $SITES_DIR/$DPP/app/htdocs/public/legacy
+  printf '<?php\n$f = create_function( %s, %s );\neach( $a );\n' "''" "'return 1;'" > $SITES_DIR/$DPP/app/htdocs/public/legacy/legacy.php; chown -R 33:33 $SITES_DIR/$DPP/app/htdocs/public/legacy
   for s in $DIS_ALL; do page_ok "dis pre" $s; done
   for s in $D82 $D83 $D84; do info "dis pre: $s .env $(setkey $s $NRKEY)"; done
   for s in $DIS_ALL; do c disable-$s site disable $s; chk "dis pre: ee site disable $s rc" 0 "$RC"
@@ -82,8 +84,7 @@ post)
   for s in $D84 $D86; do wplogin "$L" $s $D; done
   for s in $DIS_ALL; do ee site info $s < /dev/null > $D/info-$s.txt 2>&1; chk "$L: ee site info $s rc" 0 "$?"; done
   # php-compat on the layout sites (scan root = site_container_fs_path; records what v3.11.x reports for these layouts).
-  for s in $DPP $DCUR $DSUB; do ee site php-compat $s --php=8.5 --format=json < /dev/null > $D/pc-$s.json 2> $D/pc-$s.err; r=$?
-    info "$L: php-compat $s --php=8.5: rc $r $(jq -c '{status,target,safe_to_upgrade,errors,warnings,files:(.files // .scanned_files // null),message}' $D/pc-$s.json 2>&1 | cut -c1-300) $(head -c 200 $D/pc-$s.err)"; done
+  for s in $DPP $DCUR $DSUB; do pcfix "$L" $s $D/pc-$s.json; done
   done_mark dis-post ;;
 esac
 exit 0

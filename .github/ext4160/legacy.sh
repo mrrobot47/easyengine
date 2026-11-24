@@ -38,6 +38,7 @@ pre)
   echo release-1 > $SITES_DIR/$LCUR/app/htdocs/releases/1/u6-release.txt; chown 33:33 $SITES_DIR/$LCUR/app/htdocs/releases/1/u6-release.txt
   c create-$LSUB site create $LSUB --type=wp --php=8.4 --title=u6$(cname $LSUB | sed 's/^u6//') $W; chk "$L: create $LSUB (wp, to move into wp/) rc" 0 "$RC"
   bash $F/layout.sh subdir $LSUB > $D/layout-$LSUB.txt 2>&1; chk "$L: layout subdir on $LSUB rc" 0 "$?"
+  plugfix $LCUR releases/1/wp-content; plugfix $LSUB wp-content; plugfix $LPW web/wp-content
   # 7.1: no easyengine/php7.1 image and not in --php's options.
   c create-71 site create u6-l71.test --type=php --php=7.1; chk "$L: create --php=7.1 refused rc" '[1-9][0-9]*' "$RC"
   info "$L: --php=7.1 message: $(grep -v '^rc=' $D/create-71.out | head -2 | tr '\n' ' ' | cut -c1-200)"; eqs "$L: nothing left of u6-l71.test" "$NOLEFT" "$(leftovers u6-l71.test)"
@@ -70,9 +71,7 @@ post)
   pc lw80 $LW80 --php=8.4 --format=json; chk "$L: php-compat $LW80 (wp 8.0) --php=8.4 rc" 0 "$RC"; eqs "$L: php-compat $LW80 status/target" "ok 8.4" "$(js '"\(.status) \(.target)"' lw80)"
   pc l71 $L74 --php=7.1 --format=json; chk "$L: php-compat --php=7.1 refused rc" 1 "$RC"
   c create-71 site create u6-l71.test --type=php --php=7.1; chk "$L: create --php=7.1 refused rc (release)" '[1-9][0-9]*' "$RC"; eqs "$L: nothing left of u6-l71.test" "$NOLEFT" "$(leftovers u6-l71.test)"
-  for s in $LPP $LPN $LPW $LCUR $LSUB; do pc lay-$s $s --php=8.5 --format=json
-    info "$L: php-compat $s --php=8.5: rc $RC $(jq -c '{status,target,safe_to_upgrade,errors,warnings,message}' $D/lay-$s.out 2>&1 | cut -c1-300) $(head -c 200 $D/lay-$s.err)"; done
-  for s in $LPP $LPN; do eqs "$L: php-compat $s (public dir with the fixture) status" ok "$(js .status lay-$s)"; done
+  for s in $LPP $LPN $LPW $LCUR $LSUB; do pcfix "$L" $s $D/lay-$s.json; done
   # site update --php: to 8.4 and back (SC-61 path), with the New Relic key on $L74 and $L80.
   for s in $LEGV; do v=$(LV $s)
     c up84-$s site update $s --php=8.4; chk "$L: site update $s $v -> 8.4 rc" 0 "$RC"

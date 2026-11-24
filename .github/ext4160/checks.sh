@@ -131,7 +131,10 @@ d=$(diff $B/site-list.txt $A/site-list.txt | grep '^[<>]' | tr '\n' ' '); chk "e
 for s in $ENABLED; do d=$(diff $B/info/$s.txt $A/info/$s.txt | grep '^[<>]' | tr -s ' \n' ' ' | cut -c1-500)
   chk "$s: ee site info unchanged" "" "$d"
   chk "$s: ee site info rc ok (has the site URL)" yes "$(grep -q "$s" $A/info/$s.txt && echo yes || echo no)"; done
-d=$(diff $B/cron-list.txt $A/cron-list.txt | grep '^[<>]' | tr '\n' ' '); chk "ee cron list --all unchanged" "" "$d"
+# cron-command <= v2.1.0 (stables 4.10.x-4.12.x) can't list at all ("Invalid field: user"); then the release's list is checked against the DB rows.
+if grep -q 'Invalid field: user' $B/cron-list.txt; then info "ee cron list --all on $OLD_VERSION before the upgrade: $(head -1 $B/cron-list.txt) (old cron-command, fixed since)"
+  chk "ee cron list --all after lists every cron row" "$(wc -l < $A/cron-db.txt)" "$(tail -n +2 $A/cron-list.txt | grep -c .)"
+else d=$(diff $B/cron-list.txt $A/cron-list.txt | grep '^[<>]' | tr '\n' ' '); chk "ee cron list --all unchanged" "" "$d"; fi
 for x in 'wp cron event run --due-now' 'date'; do chk "global cron config.ini has the job [$x]" '[1-9][0-9]*' "$(grep '^command = ' $A/cron-config.ini | grep -cF -- "$x")"; done
 info "cron config.ini before/after diff: $(diff $B/cron-config.ini $A/cron-config.ini | grep '^[<>]' | tr '\n' ' ' | cut -c1-400)"
 eqs "$W84 /ee-admin/ HTTP after = before" "$(cut -d' ' -f3 $B/admin-http.txt)" "$(cut -d' ' -f3 $A/admin-http.txt)"

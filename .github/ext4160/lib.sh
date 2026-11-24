@@ -25,6 +25,16 @@ L56=u6-l56.test; L70=u6-l70.test; L72=u6-l72.test; L73=u6-l73.test; L74=u6-l74.t
 LPW=u6-lpubwp.test; LPP=u6-lpubphp.test; LPN=u6-lpubnest.test; LCUR=u6-lcur.test; LSUB=u6-lsub.test
 LEG_PHP="$L56:5.6 $L70:7.0 $L72:7.2 $L73:7.3 $L74:7.4 $L80:8.0"; LEG_WPS="$LW74 $LW80 $LPW $LCUR $LSUB"; LEG_ALL="$L56 $L70 $L72 $L73 $L74 $L80 $LW74 $LW80 $LPW $LPP $LPN $LCUR $LSUB"
 # Layout sites are rearranged by layout.sh after create.
+# plugfix <site> <wp-content dir relative to app/htdocs>: the php-compat legacy plugin fixture (create_function, each: 2 errors on PHP >= 8.0).
+plugfix() { local d=$SITES_DIR/$1/app/htdocs/$2/plugins/u6-legacy; mkdir -p $d
+  printf '<?php\n/*\nPlugin Name: U6 Legacy\nVersion: 1.0\n*/\n$f = create_function( %s, %s );\neach( $a );\n' "''" "'return 1;'" > $d/u6-legacy.php
+  chown -R 33:33 $d; chmod 755 $d; chmod 644 $d/u6-legacy.php; }
+# pcfix <label> <site> <outfile>: php-compat --php=8.5 json of a layout site with the fixture: ok, 2+ errors (the fixture was scanned).
+pcfix() { local L=$1 s=$2 o=$3; ee site php-compat $s --php=8.5 --format=json < /dev/null > $o 2> $o.err
+  chk "$L: php-compat $s --php=8.5 rc" 0 "$?"
+  info "$L: php-compat $s: $(jq -c 'del(.tool)' $o 2>&1 | cut -c1-300) $(head -c 200 $o.err)"
+  eqs "$L: php-compat $s status/safe" "ok false" "$(jq -r '"\(.status) \(.safe_to_upgrade)"' $o 2>&1 | tail -1)"
+  chk "$L: php-compat $s errors (the fixture plugin/file was scanned)" '[2-9]|[1-9][0-9]+' "$(jq -r .errors $o 2>&1 | tail -1)"; }
 # WP sites outside the Lane A population that add a cron row each (checks.sh counts cron rows): set per scenario.
 case ${SCEN:-} in disabled) XWPS=$DIS_WPS ;; legacy) XWPS=$LEG_WPS ;; *) XWPS= ;; esac
 # Every URL that must answer 200: sites, the multisite subsite, aliases (host path).
