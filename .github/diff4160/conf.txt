@@ -1,7 +1,7 @@
 CORE_REPO mrrobot47/easyengine
-CORE_SHA 77a422fdf8fc3daf2fdba82b5166aed62e64a5b3
-PKG site-command mrrobot47/site-command c15a9a0b99d3c522f77fa67906bdd3bb278d8fcb
-PKG cron-command mrrobot47/cron-command e9da0a4cb1d6d0afb8a44bc8ef045b43be816fad
+CORE_SHA 8e4abc5ebb98bd0d3c550d6046edc410928b2d49
+PKG site-command mrrobot47/site-command db3095d80d8ed900f92ad7ca8b622c7d805a0495
+PKG cron-command EasyEngine/cron-command 8bf0dcf25be7a0fa42c527bf5dd6f47b31594f80
 RUN wp rc
 RUN wp upgrade
 RUN phphtml rc
