@@ -29,12 +29,13 @@ jobs:
       matrix: ${{ steps.m.outputs.matrix }}
       core_sha: ${{ steps.m.outputs.core_sha }}
       core_sha_old: ${{ steps.m.outputs.core_sha_old }}
+      core_repo: ${{ steps.m.outputs.core_repo }}
     steps:
       - uses: actions/checkout@v7
       - id: m
         run: |
           c=$(awk '$1=="CORE_SHA"{print $2}' $SCRIPTS/conf.txt); o=$(awk '$1=="CORE_SHA_OLD"{print $2}' $SCRIPTS/conf.txt)
-          echo "core_sha_old=$o" >> "$GITHUB_OUTPUT"
+          echo "core_sha_old=$o" >> "$GITHUB_OUTPUT"; r=$(awk '$1=="CORE_REPO"{print $2}' $SCRIPTS/conf.txt); echo "core_repo=${r:-EasyEngine/easyengine}" >> "$GITHUB_OUTPUT"
           m=$(awk '$1=="RUN"{printf "%s{\"shard\":\"%s\",\"side\":\"%s\"}", (n++?",":""), $2, $3}' $SCRIPTS/conf.txt)
           echo "core_sha=$c" >> "$GITHUB_OUTPUT"; echo "matrix={\"include\":[$m]}" >> "$GITHUB_OUTPUT"; echo "core $c matrix [$m]"
 
@@ -48,7 +49,7 @@ jobs:
           path: wf
       - uses: actions/checkout@v7
         with:
-          repository: EasyEngine/easyengine
+          repository: ${{ needs.plan.outputs.core_repo }}
           ref: ${{ needs.plan.outputs.core_sha }}
           path: core
       - uses: actions/checkout@v7
@@ -68,6 +69,14 @@ jobs:
           OUT=$RUNNER_TEMP/out; mkdir -p $OUT
           cd core; git rev-parse HEAD | tee $OUT/core-sha.txt
           composer install --no-dev --no-progress --no-interaction
+          # PKG <package> <owner/repo> <sha>: test a package PR head before it is tagged (files replaced, autoload from its composer.json).
+          awk '$1=="PKG"{print $2, $3, $4}' $GITHUB_WORKSPACE/wf/$SCRIPTS/conf.txt | while read -r pk rp sh; do
+            git clone -q --filter=blob:none https://github.com/$rp $RUNNER_TEMP/pkg-$pk && git -C $RUNNER_TEMP/pkg-$pk checkout -q $sh
+            test "$(git -C $RUNNER_TEMP/pkg-$pk rev-parse HEAD)" = "$sh"
+            rm -rf vendor/easyengine/$pk && mkdir vendor/easyengine/$pk && (cd $RUNNER_TEMP/pkg-$pk && git archive HEAD) | tar -x -C vendor/easyengine/$pk
+            php $GITHUB_WORKSPACE/wf/$SCRIPTS/pkg-override.php vendor easyengine/$pk $RUNNER_TEMP/pkg-$pk
+            echo "easyengine/$pk $rp $sh" | tee -a $OUT/pkg-overrides.txt; done
+          if [ -s $OUT/pkg-overrides.txt ]; then composer dump-autoload --no-dev --no-interaction; fi
           php -dphar.readonly=0 utils/make-phar.php easyengine.phar
           php easyengine.phar cli version | tee $OUT/rc-version.txt
           cp easyengine.phar $OUT/rc.phar
