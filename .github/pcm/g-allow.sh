@@ -50,5 +50,21 @@ S7=pal-86p.test; run_ee c-$S7 site create $S7 --type=php --php=8.6; plant $(A $S
 # EE --vip config (if the option works here)
 V=pal-vip.test; run_ee c-$V site create $V --type=wp --vip --title=pa $W
 if [ $RC = 0 ]; then plant $(A $V)/htdocs/wp-content/plugins/pcm-al/pcm-al.php; chown -R 33:33 $(A $V)/htdocs; scan_ok A7-vip $V pcm-al.php; else info "A7 --vip site create failed (rc $RC): $(grep -v '^rc=' $D/c-$V.out | tail -2 | tr '\n' ' ' | cut -c1-200)"; fi
+# Scoped verdict + WordPress core gate (#546 075970cd)
+J() { jq -r "$1" $D/$2.out 2>/dev/null | tail -1; }
+rm -rf $H/wp-content/plugins/pcm-al; rc; rm -f $H/.user.ini; pcs V1-normal $WS
+chk "V1 normal site for 8.4: positive verdict (safe_to_upgrade true)" 'ok true 0' "$ST $SAFE $ERRS"
+chk "V1/V4 not_checked holds only the core entry, and it doesn't downgrade the verdict" '1 core wordpress true' "$(J '.not_checked|length' V1-normal) $(J '.not_checked[0].type' V1-normal) $(J '.not_checked[0].slug' V1-normal) $SAFE"
+chk "V1 wordpress.supports true, files_not_checked 0" 'true 0' "$(J .wordpress.supports V1-normal) $(J .files_not_checked V1-normal)"
+info "V1 json: $(head -c 700 $D/V1-normal.out | tr '\n' ' ')"; info "V1 table: $(cd /tmp && ee site php-compat $WS --php=8.4 < /dev/null 2>&1 | grep -v '^$' | head -4 | tr '\n' '|')"
+PCV=8.6 pcs V2-current-wp-86 $WS; chk "V2 current WordPress for 8.6: can't confirm (null), core supports null" 'ok null null' "$ST $SAFE $(J .wordpress.supports V2-current-wp-86)"
+info "V2 table: $(cd /tmp && ee site php-compat $WS --php=8.6 < /dev/null 2>&1 | grep -v '^$' | head -3 | tr '\n' '|')"
+O=pal-old.test; run_ee c-$O site create $O --type=wp --title=pa $W
+for ver in 4.9.26 5.9.10; do (cd $SITES_DIR/$O && docker-compose exec -T --user=www-data php sh -c "wp core download --version=$ver --force --skip-content") > $D/V3-dl-$ver.out 2>&1
+  info "V3 core download $ver: $(tail -1 $D/V3-dl-$ver.out); version.php: $(grep -o "wp_version = '[^']*'" $(A $O)/htdocs/wp-includes/version.php)"
+  pcs V3-old-wp-$ver $O; chk "V3 WordPress $ver for 8.4: not safe, supports false, minimum 6.7" 'ok false false 6.7' "$ST $SAFE $(J .wordpress.supports V3-old-wp-$ver) $(J .wordpress.minimum V3-old-wp-$ver)"
+  t=$(cd /tmp && ee site php-compat $O --php=8.4 < /dev/null 2>&1); has "V3 $ver table carries the update hint" "update WordPress to at least 6.7" "$t"; info "V3 $ver table: $(echo "$t" | grep -v '^$' | head -4 | tr '\n' '|')"; done
+PCV=7.2 pcs V3c-old-wp-72 $O; info "V3c WordPress 5.9 for 7.2: $ST safe=$SAFE supports=$(J .wordpress.supports V3c-old-wp-72)"
+chk "V3c WordPress 5.9 for 7.2 (supported range 5.6-8.1): positive" 'ok true true' "$ST $SAFE $(J .wordpress.supports V3c-old-wp-72)"
 chk "no scanner containers left" 0 "$(docker ps -aq --filter ancestor=$SC:v4.16.0 | wc -l)"
 echo "DONE allow" >> $OUT/done.txt
