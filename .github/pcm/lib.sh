@@ -44,6 +44,9 @@ pcs() { local l=$1 s=$2 R=/root/pcm-out; shift 2; install -d -m 0700 $R; rm -f "
   ERRS=$(jq -r .errors "$D/$l.out" 2>/dev/null | tail -1); FC=$(jq -r .files_checked "$D/$l.out" 2>/dev/null | tail -1); NC=$(jq -r .files_not_checked "$D/$l.out" 2>/dev/null | tail -1)
   ARGP=$(grep -o "'scan' '[a-z]*' '[^']*'" "$D/$l.err" | tail -1 | awk -F"'" '{print $6}')
   CAN=$(canary "$l" "${CANF:-pcm-canary.php}")
+  # --output report carries the same verdict and keys as stdout (lists aside: stdout caps not_checked at 10)
+  if [ -s "$D/$l.report.json" ]; then local d; d=$(jq -n --slurpfile o <(grep -a '^{' "$D/$l.out" | tail -1) --slurpfile r "$D/$l.report.json" '[$o[0] | to_entries[] | select(.key | IN("not_checked","not_checked_more","report","report_bytes","components") | not) | select($r[0][.key] != .value) | .key] | join(",")' 2>&1)
+    chk "$l: --output report = stdout (keys outside the lists)" '' "$d"; fi
   echo "SCAN | $l | $s | rc=$RC status=$ST safe=$SAFE errors=$ERRS checked=$FC not_checked=$NC argv_path=$ARGP canary_errors=$CAN | $(head -c 300 "$D/$l.out" | tr '\n' ' ')" | tee -a "${RES:-/dev/null}"; }
 canary() { [ -f "$D/$1.report.json" ] || { echo 0; return; }; jq -r --arg f "$2" '[.components[]?.findings[]? | select(.file|endswith($f)) | select(.type=="ERROR")] | length' "$D/$1.report.json" 2>/dev/null || echo err; }
 # pce <label> <site>: estimate, json. Sets EST_ST EST_FILES EST_BYTES.

@@ -68,5 +68,19 @@ for ver in 4.9.26 5.9.10; do (cd $SITES_DIR/$O && docker-compose exec -T --user=
   t=$(cd /tmp && ee site php-compat $O --php=8.4 < /dev/null 2>&1); has "V3 $ver table carries the update hint" "update WordPress to at least 6.7" "$t"; info "V3 $ver table: $(echo "$t" | grep -v '^$' | head -4 | tr '\n' '|')"; done
 PCV=7.2 pcs V3c-old-wp-72 $O; info "V3c WordPress 5.9 for 7.2: $ST safe=$SAFE supports=$(J .wordpress.supports V3c-old-wp-72)"
 chk "V3c WordPress 5.9 for 7.2 (supported range 5.6-8.1): positive" 'ok true true' "$ST $SAFE $(J .wordpress.supports V3c-old-wp-72)"
+# V5: WordPress newer than EE's table, and nightly/RC version strings (version.php rewritten on the normal site)
+VP=$H/wp-includes/version.php; cp -a $VP /var/tmp/pal-version.php
+for v in 7.2 7.3-alpha-65773 7.3-alpha-65773-src 7.1-RC2 7.1.1 6.9.1-beta1; do cp -a /var/tmp/pal-version.php $VP; sed -i "s/^\\\$wp_version = '[^']*';/\\\$wp_version = '$v';/" $VP
+  l=V5-$(echo $v | tr -c 'a-z0-9.\n' '-'); pcs $l-84 $WS; info "V5 $v for 8.4: $ST safe=$SAFE wordpress=$(jq -c .wordpress $D/$l-84.out 2>/dev/null | tail -1) table: $(cd /tmp && ee site php-compat $WS --php=8.4 < /dev/null 2>&1 | grep -v '^$' | head -1 | cut -c1-200)"
+  chk "V5 WordPress $v for 8.4: positive (ok true)" 'ok true' "$ST $SAFE"
+  case $v in 7.2*|7.3*) chk "V5 WordPress $v: wordpress.table_newest set" '.+' "$(jq -r '.wordpress.table_newest // empty' $D/$l-84.out 2>/dev/null | tail -1)" ;; esac
+  PCV=8.6 pcs $l-86 $WS; chk "V5 WordPress $v for 8.6: can't confirm" 'ok null' "$ST $SAFE"; done
+cp -a /var/tmp/pal-version.php $VP; chown 33:33 $VP
+# V6: more than 10 not_checked entries: stdout capped at 10 + not_checked_more, report keeps all
+mkdir -p $H/wp-content/plugins/pcm-many; printf '<?php\n/*\nPlugin Name: PCM Many\n*/\n' > $H/wp-content/plugins/pcm-many/pcm-many.php
+for i in $(seq 1 13); do ln -s /nonexistent/gone$i.php $H/wp-content/plugins/pcm-many/gone$i.php; done; chown -R 33:33 $H/wp-content/plugins/pcm-many; chown -h 33:33 $H/wp-content/plugins/pcm-many/gone*.php
+pcs V6-many-not-checked $WS; info "V6: $ST safe=$SAFE not_checked=$(J '.not_checked|length' V6-many-not-checked) more=$(J .not_checked_more V6-many-not-checked) files_not_checked=$NC report=$(jq '.not_checked|length' $D/V6-many-not-checked.report.json 2>/dev/null)"
+chk "V6 13 dangling .php links: can't confirm, stdout not_checked 10 + not_checked_more 3, report 13" 'ok null 10 3 13' "$ST $SAFE $(J '.not_checked|length' V6-many-not-checked) $(J .not_checked_more V6-many-not-checked) $(jq '.not_checked|length' $D/V6-many-not-checked.report.json 2>/dev/null)"
+rm -rf $H/wp-content/plugins/pcm-many
 chk "no scanner containers left" 0 "$(docker ps -aq --filter ancestor=$SC:v4.16.0 | wc -l)"
 echo "DONE allow" >> $OUT/done.txt
