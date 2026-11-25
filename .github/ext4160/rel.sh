@@ -142,9 +142,14 @@ img22)
     dlog_since $s $t0 > $D/dlog-a-$s.txt; chk "$L: (a) entrypoint warnings in the log since the restart" 0 "$(grep -c 'docker-entrypoint: could not' $D/dlog-a-$s.txt)"
     chk "$L: (a) / HTTP" 200 "$(hwait $s)"
     chown -R root:root $CD; chmod 0755 $CD
-    t0=$(date -u +%FT%T); (cd $SITES_DIR/$s && docker-compose restart php) > $D/restart-b1-$s.txt 2>&1; sleep 4
+    # A changed key forces a write: an ini already holding the key and app name is left alone on a restart (no write, no warning).
+    # Recreated with docker-compose, not ee site enable, which would give www-data conf.d again.
+    info "$L: (b1) .env: $(setkey $s $NRKEY2)"
+    t0=$(date -u +%FT%T); (cd $SITES_DIR/$s && docker-compose up -d php) > $D/restart-b1-$s.txt 2>&1; sleep 4
     dlog_since $s $t0 > $D/dlog-b1-$s.txt
-    has "$L: (b1) conf.d root-owned, ini present: warning" "docker-entrypoint: could not write the New Relic license" "$(cat $D/dlog-b1-$s.txt)"
+    has "$L: (b1) conf.d root-owned, ini present, key changed: warning" "docker-entrypoint: could not write the New Relic settings" "$(cat $D/dlog-b1-$s.txt)"
+    eqs "$L: (b1) newrelic.ini license unchanged (not writable)" "\"$NRKEY\"" "$(iniv $s license)"
+    chk "$L: (b1) conf.d still root-owned" root "$(stat -c %U $CD)"
     chk "$L: (b1) php container" 'running restarts=0' "$(cstate $s)"; chk "$L: (b1) php-fpm master" 1 "$(fpm_master $s)"; chk "$L: (b1) / HTTP" 200 "$(hwait $s)"
     rm -f "$(nr_ini $s)"
     t0=$(date -u +%FT%T); (cd $SITES_DIR/$s && docker-compose restart php) > $D/restart-b2-$s.txt 2>&1; sleep 4
@@ -152,6 +157,7 @@ img22)
     has "$L: (b2) conf.d root-owned, no ini: warning" "New Relic stays off" "$(cat $D/dlog-b2-$s.txt)"
     chk "$L: (b2) php container" 'running restarts=0' "$(cstate $s)"; chk "$L: (b2) php-fpm master" 1 "$(fpm_master $s)"; chk "$L: (b2) / HTTP" 200 "$(hwait $s)"
     chk "$L: (b2) newrelic not loaded" 'cli=0 fpm=0' "$(nr_mods $s)"
+    info "$L: restore: .env: $(setkey $s $NRKEY)"
     run_ee restore-$s $D site enable $s --force; chk "$L: restore: ee site enable --force rc" 0 "$RC"
     (cd $SITES_DIR/$s && docker-compose restart php) > $D/restart-r-$s.txt 2>&1; sleep 4
     chk "$L: restore: conf.d owner" www-data "$(stat -c %U $CD)"; chk "$L: restore: newrelic loaded" 'cli=1 fpm=1' "$(nr_mods $s)"; chk "$L: restore: / HTTP" 200 "$(hwait $s)"

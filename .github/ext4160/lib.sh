@@ -11,6 +11,8 @@ PCX=u6-pcx.test; N86=u6-new86.test
 case ${OLD_VERSION:-} in 4.15.0|fresh) HAS86=1 ;; *) HAS86= ;; esac
 # Fake New Relic license (40 chars, not a real key): the agent loads and reaches the daemon, the collector rejects it.
 NRKEY=0123456789abcdef0123456789abcdef01234567
+# A second fake key, for the step that needs the entrypoint to write a changed key.
+NRKEY2=fedcba9876543210fedcba9876543210fedcba98
 WPS="$W81 $W82 $MUD $W83 $W84 $K84 $W85 ${HAS86:+$W86 }$SW $LDB"
 ENABLED="$W81 $W82 $MUD $W83 $W84 $K84 $W85 ${HAS86:+$W86 }$SW $PHPS $HTML $LDB"
 DISS=
@@ -209,13 +211,17 @@ sess_strict() { local L=$1 s=$2 m=$3 sid=0123456789abcdef0123456789abcdef h b id
   fi; }
 # wplogin <label> <site> <dir>: GET wp-login.php (test cookie), POST admin credentials -> 302 to wp-admin, then /wp-admin/ with the cookies -> 200 dashboard.
 # wp-login.php is rate-limited by the site nginx, so a 429/503 is retried (logged).
-wplogin() { local L=$1 s=$2 D=$3 J h c i loc c2
+wplogin() { local L=$1 s=$2 D=$3 J h c i loc c2 tc=
   J=$D/login-$s.jar; h=$D/login-$s.hdr; rm -f $J
   curl -s -m 20 -c $J -o /dev/null --resolve "$s:80:127.0.0.1" "http://$s/wp-login.php"
   for i in 1 2 3 4 5; do sleep 2
     c=$(curl -s -m 30 -c $J -b $J -D $h -o $D/login-$s.body -w '%{http_code}' --resolve "$s:80:127.0.0.1" --data-urlencode log=admin --data-urlencode pwd=Adm1nPass4160u \
       --data-urlencode 'wp-submit=Log In' --data-urlencode "redirect_to=http://$s/wp-admin/" --data-urlencode testcookie=1 "http://$s/wp-login.php")
-    case $c in 429|503) info "$L: $s login POST got $c (attempt $i), retrying" ;; *) break ;; esac; done
+    case $c in 429|503) info "$L: $s login POST got $c (attempt $i), retrying" ;;
+      # WordPress's test cookie not seen yet ("Cookies are blocked"): fetch the login page again and retry once.
+      200) if [ -z "${tc:-}" ] && grep -q 'Cookies are blocked' $D/login-$s.body; then tc=1; info "$L: $s login POST got 200 \"Cookies are blocked\" (attempt $i), retrying once"
+             curl -s -m 20 -c $J -b $J -o /dev/null --resolve "$s:80:127.0.0.1" "http://$s/wp-login.php"; else break; fi ;;
+      *) break ;; esac; done
   loc=$(tr -d '\r' < $h | awk 'tolower($1)=="location:"{print $2}' | tail -1)
   chk "$L: $s WordPress login POST HTTP" 302 "$c"
   has "$L: $s WordPress login redirect" "http://$s/wp-admin/" "$loc"
