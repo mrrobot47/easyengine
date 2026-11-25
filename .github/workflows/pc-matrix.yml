@@ -177,7 +177,7 @@ jobs:
           sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
           sudo chown -R "$USER" "$OUT"
           tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
-          { echo "## repro $OLD_VERSION: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## repro $OLD_VERSION: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; { grep -E '^(FAIL|SCAN|REC)' "$RES" || true; } | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -100 || true
       - uses: actions/upload-artifact@v7
         if: always()
@@ -277,7 +277,7 @@ jobs:
           sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
           sudo chown -R "$USER" "$OUT"
           tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
-          { echo "## group ${{ matrix.g }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## group ${{ matrix.g }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; { grep -E '^(FAIL|SCAN|REC)' "$RES" || true; } | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -150 || true
       - uses: actions/upload-artifact@v7
         if: always() && env.SEL == '1'
