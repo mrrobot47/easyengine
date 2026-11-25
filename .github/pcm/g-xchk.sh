@@ -3,10 +3,11 @@
 # X*: former exemptions with a canary the scanner may not list; E*: near-misses of the three exact exempt shapes; K*: kernel path resolution; P*: must stay positive.
 . "$(dirname "$0")/lib.sh"; D=$OUT/xchk; mkdir -p $D; cd /tmp
 command -v rsync > /dev/null || apt-get install -y -qq rsync > /dev/null 2>&1
+git config --global --add safe.directory '*'
 ncl() { jq -c '.not_checked // [] | map(tostring)' "$D/$1.report.json" 2>/dev/null || jq -c '.not_checked // [] | map(tostring)' "$D/$1.out" 2>/dev/null | tail -1; }
 # xc <label> <site> <canary basename> <dir token>: can't confirm with the file (or its dir) in not_checked, or scanned (canary found).
-xc() { local l=$1 s=$2 f=$3 t=${4:-$3} L; CANF=$f pcs $l $s; L=$(ncl $l | grep -cF -e "$f" -e "$t")
-  chk "$l: can't confirm with it in not_checked, or scanned (canary found)" 'ok null L=1 C=0|ok false L=[01] C=[2-9][0-9]*' "$ST $SAFE L=$L C=$CAN"
+xc() { local l=$1 s=$2 f=$3 t=${4:-$3} L; CANF=$f pcs $l $s; L=$( { ncl $l; grep -a '^{' "$D/$l.out" | tail -1; } | grep -cF -e "$f" -e "$t" | awk '{print ($1>0)}')
+  chk "$l: can't confirm with it named (not_checked or detail), or scanned (canary found)" 'ok null L=1 C=0|ok false L=[01] C=[2-9][0-9]*' "$ST $SAFE L=$L C=$CAN"
   info "$l: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/$l.out 2>/dev/null | tail -1 | cut -c1-200) not_checked=$(ncl $l | cut -c1-300)"; }
 notpos() { CANF=$3 pcs $1 $2; chk "$1: never positive (tool_error / can't confirm / canary found)" 'tool_error null [0-9]*|ok null [0-9]*|ok false [2-9][0-9]*' "$ST $SAFE $CAN"; info "$1: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-250) not_checked=$(ncl $1 | cut -c1-300)"; }
 pos() { CANF=none pcs $1 $2; chk "$1: positive (ok true, nothing unchecked)${3:+ $3}" 'ok true \[\]' "$ST $SAFE $(ncl $1)"; [ "$SAFE" = true ] || info "$1: $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-250) not_checked=$(ncl $1 | cut -c1-400)"; }
@@ -26,7 +27,7 @@ reset() { rsync -a --delete /var/tmp/px-app/ $AP/; chown -R 33:33 $AP; }
 pos P0-fresh $X
 wpx $X 'plugin install hello-dolly' > $D/P1-wpcli.log 2>&1; wpx $X 'plugin delete hello-dolly' >> $D/P1-wpcli.log 2>&1; wpx $X 'core verify-checksums' >> $D/P1-wpcli.log 2>&1
 info "P1 wp-cli: $(tail -3 $D/P1-wpcli.log | tr '\n' ' ' | cut -c1-200); dot entries: $(cd $AP && find . -maxdepth 4 -name '.*' | sort | tr '\n' ' ' | cut -c1-400)"; pos P1-wpcli-cache $X "(WP-CLI caches in app/.wp-cli)"
-reset; (cd $H && git init -q && git -c user.email=a@example.com -c user.name=pcm add -A && git -c user.email=a@example.com -c user.name=pcm commit -qm init); chown -R 33:33 $H; pos P2-htdocs-git-repo $X
+reset; (cd $H && git init -q && git -c user.email=a@example.com -c user.name=pcm add -A && git -c user.email=a@example.com -c user.name=pcm commit -qm init); chown -R 33:33 $H; info "P2 htdocs repo HEAD $(git -C $H rev-parse --short HEAD 2>&1) objects $(find $H/.git/objects -type f | wc -l)"; pos P2-htdocs-git-repo $X
 reset; G=$H/wp-content/plugins/pcm-git; clean $G/pcm-git.php; mkdir -p $G/.github/workflows; printf 'on: push\n' > $G/.github/workflows/ci.yml; printf 'root = true\n' > $G/.editorconfig; printf '{"name":"acme/pcm-git"}\n' > $G/composer.json
 (cd $G && git init -q && git -c user.email=a@example.com -c user.name=pcm add -A && git -c user.email=a@example.com -c user.name=pcm commit -qm init); chown -R 33:33 $H; pos P3-plugin-git-clone $X
 reset; mkdir -p $H/.well-known/acme-challenge; printf 'tok.en\n' > $H/.well-known/acme-challenge/AbC123; printf 'Contact: mailto:a@example.com\n' > $H/.well-known/security.txt; chown -R 33:33 $H; pos P4-well-known-non-code $X
@@ -34,6 +35,13 @@ reset; mkdir -p $AP/.composer/cache/files/acme $AP/.cache/wp-cli $AP/.npm/_logs 
 printf '{}\n' > $AP/.cache/wp-cli/x.json; printf 'log\n' > $AP/.npm/_logs/x.log; printf 'path: htdocs\n' > $AP/.wp-cli/config.yml; chown -R 33:33 $AP; pos P5-home-dot-dirs-non-code $X
 reset; printf '<?php $upgrading = %s; ?>' "$(date +%s)" > $H/.maintenance; chown 33:33 $H/.maintenance; pos P6-maintenance-flag $X "(WordPress's own update flag)"
 reset; mkdir -p $H/wp-content/themes/twentytwentyfive/node_modules/acme; printf 'module.exports=1;\n' > $H/wp-content/themes/twentytwentyfive/node_modules/acme/index.js; chown -R 33:33 $H; pos P7-theme-node-modules-js $X
+
+# clean twins: dot-named PHP plugins ship, clean code reached through links
+reset; G=$H/wp-content/plugins/pcm-dev; clean $G/pcm-dev.php; printf '<?php\nreturn ( new PhpCsFixer\\Config() )->setRules( array() );\n' > $G/.php-cs-fixer.dist.php
+printf '<?php\nnamespace PHPSTORM_META {\n\toverride( \\pcm_clean(0), map( array( "" => "@" ) ) );\n}\n' > $G/.phpstorm.meta.php; mkdir -p $G/vendor/acme; printf '<?php\nreturn array();\n' > $G/vendor/acme/.php_cs.dist; chown -R 33:33 $H; pos P8-plugin-dot-named-php $X "(.php-cs-fixer.dist.php, .phpstorm.meta.php)"
+reset; mkdir -p $AP/src/plug; clean $AP/src/plug/sib.php; ln -s ../../../src/plug $H/wp-content/plugins/sib; chown -R 33:33 $AP; chown -h 33:33 $H/wp-content/plugins/sib; pos P9-clean-plugin-linked-to-app-sibling $X
+reset; mkdir -p $AP/.wp-cli/packages/vendor/acme/cmd/src; printf '<?php\nnamespace Acme;\nclass Cmd { public function __invoke() { return 1; } }\n' > $AP/.wp-cli/packages/vendor/acme/cmd/src/Cmd.php; printf '<?php\nreturn array();\n' > $AP/.wp-cli/packages/vendor/autoload.php; chown -R 33:33 $AP
+CANF=none pcs P10-wp-cli-package-clean $X; info "P10 (product call) clean wp package tree in app/.wp-cli/packages: $ST safe=$SAFE not_checked=$(ncl P10-wp-cli-package-clean | cut -c1-200)"
 
 # --- former exemptions: a canary code file must not leave the site positive
 c() { reset; plant "$2"; chown -R 33:33 $AP; xc "$1" $X "$(basename "$2")" "$3"; }
@@ -51,6 +59,9 @@ c X11-beside-htdocs $AP/pcm-x11.php pcm-x11
 c X12-beside-htdocs-subdir $AP/lib/pcm-x12.php lib/
 c X13-beside-htdocs-inc $AP/pcm-x13.inc pcm-x13
 c X14-beside-htdocs-phtml $AP/pcm-x14.phtml pcm-x14
+c X1u-composer-upper-PHP $AP/.composer/vendor/acme/pcm-x1u.PHP .composer
+c X1s-composer-php7 $AP/.composer/vendor/acme/pcm-x1s.php7 .composer
+c X1m-composer-module $AP/.composer/vendor/acme/pcm-x1m.module .composer
 c X15-wp-config-old $AP/wp-config-old.php wp-config-old
 c X16-htdocs-git-php $H/.git/hooks/pcm-x16.php .git
 reset; clean $H/wp-content/plugins/pcm-nm/pcm-nm.php; plant $H/wp-content/plugins/pcm-nm/node_modules/acme/pcm-x17.php; chown -R 33:33 $H; xc X17-node-modules-php $X pcm-x17.php node_modules
@@ -79,6 +90,7 @@ cc E3-stray-file-in-releases $CH/releases/pcm-e3.php pcm-e3
 cc E4-htdocs-root-beside-current $CH/pcm-e4.php pcm-e4
 cc E5-shared-lib-unlinked $CH/shared/lib/pcm-e5.php shared/
 cc E6-app-beside-htdocs-cicd $CA/pcm-e6.php pcm-e6
+creset; mkdir -p $CH/shared/uploads/2026/11; printf '<?php\n// Silence is golden.\n' > $CH/shared/uploads/2026/11/index.php; chown -R 33:33 $CH; pos P11-clean-php-in-shared-uploads-cicd $C
 creset; plant $CH/shared/uploads/2026/11/pcm-e9.php; chown -R 33:33 $CA; xc E9-shared-uploads-cicd $C pcm-e9.php uploads
 # releases present but nginx root is htdocs (default public dir): old releases are served, so not exempt
 reset; mkdir -p $H/releases/1/lib; plant $H/releases/1/lib/pcm-e10.php; chown -R 33:33 $H; notpos E10-releases-under-plain-root $X pcm-e10.php
