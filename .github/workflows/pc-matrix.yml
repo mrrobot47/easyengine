@@ -26,8 +26,8 @@ env:
   # img-versions.json overrides before the phar is built: space-separated <image>=<tag>
   IMG_OVERRIDES: 'easyengine/php8.5=v4.16.0'
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
-  DF_REPO: 'EasyEngine/dockerfiles'
-  DF_REF: ''
+  DF_REPO: 'mrrobot47/dockerfiles'
+  DF_REF: 'bbd3f555b40ae1cbb8a7dae837864f7e7643639c'
   SC_REF: '9dece016eabd5851cd98546b3418d60672ac4560'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
@@ -59,6 +59,7 @@ jobs:
             git clone -q "https://github.com/$SC_REPO" vendor/easyengine/site-command
             git -C vendor/easyengine/site-command checkout -q "$SC_REF"
             git -C vendor/easyengine/site-command log -1 --format='site-command %H %s'
+            [ "$(git -C vendor/easyengine/site-command rev-parse HEAD)" = "$SC_REF" ] || { echo "site-command HEAD != SC_REF"; exit 1; }
             composer dump-autoload --no-dev
           fi
           for o in $PKG_OVERRIDES; do d=${o%%=*}; r=${o#*=}; repo=${r%@*}; ref=${r#*@}
@@ -80,6 +81,7 @@ jobs:
           echo "pinned scanner tag $tag" | tee -a "$RUNNER_TEMP/out/refs.txt"
           if [ -n "$DF_REF" ]; then
             git clone -q "https://github.com/$DF_REPO" df && git -C df checkout -q "$DF_REF" && git -C df log -1 --format='dockerfiles %H %s' | tee -a "$RUNNER_TEMP/out/refs.txt"
+            [ "$(git -C df rev-parse HEAD)" = "$DF_REF" ] || { echo "dockerfiles HEAD != DF_REF"; exit 1; }
             docker build -q -t "easyengine/compat-scanner:$tag" df/compat-scanner
             docker image inspect -f 'scanner image {{.Id}}' "easyengine/compat-scanner:$tag" | tee -a "$RUNNER_TEMP/out/refs.txt"
             docker save "easyengine/compat-scanner:$tag" | gzip -1 > "$RUNNER_TEMP/out/scanner.tar.gz"
@@ -138,7 +140,10 @@ jobs:
           cat "$OUT/cli-info-$i.txt"; [ $ok = 1 ]
           docker-compose version || { sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose; }
           sudo ee config set rclone-path eebk:/var/tmp/eebk || true
-          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"; fi
+          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"
+            want=$(awk '/^scanner image/ {print $3}' "$RUNNER_TEMP/phar/refs.txt"); tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt"); got=$(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag")
+            [ -n "$want" ] && [ "$want" = "$got" ] || { echo "FAIL: loaded scanner $got != built $want"; exit 1; }
+            echo "PASS | loaded scanner easyengine/compat-scanner:$tag = built | exp $want | got $got" | tee -a "$RES"; fi
       - name: Create sites
         working-directory: wf
         run: $S bash "$SCRIPTS/repro.sh" create 2>&1 | tail -80
@@ -171,6 +176,7 @@ jobs:
         run: |
           sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
           sudo chown -R "$USER" "$OUT"
+          tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
           { echo "## repro $OLD_VERSION: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -100
       - uses: actions/upload-artifact@v7
@@ -254,7 +260,10 @@ jobs:
           cat "$OUT/cli-info-$i.txt"; [ $ok = 1 ]
           docker-compose version || { sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose; }
           sudo ee config set rclone-path eebk:/var/tmp/eebk || true
-          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"; fi
+          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"
+            want=$(awk '/^scanner image/ {print $3}' "$RUNNER_TEMP/phar/refs.txt"); tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt"); got=$(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag")
+            [ -n "$want" ] && [ "$want" = "$got" ] || { echo "FAIL: loaded scanner $got != built $want"; exit 1; }
+            echo "PASS | loaded scanner easyengine/compat-scanner:$tag = built | exp $want | got $got" | tee -a "$RES"; fi
       - name: Run ${{ matrix.g }}
         if: env.SEL == '1'
         working-directory: wf
@@ -267,6 +276,7 @@ jobs:
         run: |
           sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
           sudo chown -R "$USER" "$OUT"
+          tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
           { echo "## group ${{ matrix.g }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -150
       - uses: actions/upload-artifact@v7
