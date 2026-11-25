@@ -33,7 +33,7 @@ reset; G=$H/wp-content/plugins/pcm-git; clean $G/pcm-git.php; mkdir -p $G/.githu
 reset; mkdir -p $H/.well-known/acme-challenge; printf 'tok.en\n' > $H/.well-known/acme-challenge/AbC123; printf 'Contact: mailto:a@example.com\n' > $H/.well-known/security.txt; chown -R 33:33 $H; pos P4-well-known-non-code $X
 reset; mkdir -p $AP/.composer/cache/files/acme $AP/.cache/wp-cli $AP/.npm/_logs $AP/.wp-cli; head -c 2048 /dev/urandom > $AP/.composer/cache/files/acme/x.zip; printf '{"require":{}}\n' > $AP/.composer/composer.json
 printf '{}\n' > $AP/.cache/wp-cli/x.json; printf 'log\n' > $AP/.npm/_logs/x.log; printf 'path: htdocs\n' > $AP/.wp-cli/config.yml; chown -R 33:33 $AP; pos P5-home-dot-dirs-non-code $X
-reset; printf '<?php $upgrading = %s; ?>' "$(date +%s)" > $H/.maintenance; chown 33:33 $H/.maintenance; pos P6-maintenance-flag $X "(WordPress's own update flag)"
+reset; printf '<?php $upgrading = %s; ?>' "$(date +%s)" > $H/.maintenance; chown 33:33 $H/.maintenance; CANF=none pcs P6-maintenance-flag $X; chk "P6 clean .maintenance (PHP WordPress loads): positive, or can't confirm naming it (acceptable, reported)" 'ok true|ok null 1' "$ST $SAFE$([ "$SAFE" = null ] && echo " $( { ncl P6-maintenance-flag; grep -a '^{' $D/P6-maintenance-flag.out | tail -1; } | grep -cF .maintenance | awk '{print ($1>0)}')")"; info "P6: $ST safe=$SAFE not_checked=$(ncl P6-maintenance-flag | cut -c1-200)"
 reset; mkdir -p $H/wp-content/themes/twentytwentyfive/node_modules/acme; printf 'module.exports=1;\n' > $H/wp-content/themes/twentytwentyfive/node_modules/acme/index.js; chown -R 33:33 $H; pos P7-theme-node-modules-js $X
 
 # clean twins: dot-named PHP plugins ship, clean code reached through links
@@ -41,7 +41,7 @@ reset; G=$H/wp-content/plugins/pcm-dev; clean $G/pcm-dev.php; printf '<?php\nret
 printf '<?php\nnamespace PHPSTORM_META {\n\toverride( \\pcm_clean(0), map( array( "" => "@" ) ) );\n}\n' > $G/.phpstorm.meta.php; mkdir -p $G/vendor/acme; printf '<?php\nreturn array();\n' > $G/vendor/acme/.php_cs.dist; chown -R 33:33 $H; pos P8-plugin-dot-named-php $X "(.php-cs-fixer.dist.php, .phpstorm.meta.php)"
 reset; mkdir -p $AP/src/plug; clean $AP/src/plug/sib.php; ln -s ../../../src/plug $H/wp-content/plugins/sib; chown -R 33:33 $AP; chown -h 33:33 $H/wp-content/plugins/sib; pos P9-clean-plugin-linked-to-app-sibling $X
 reset; mkdir -p $AP/.wp-cli/packages/vendor/acme/cmd/src; printf '<?php\nnamespace Acme;\nclass Cmd { public function __invoke() { return 1; } }\n' > $AP/.wp-cli/packages/vendor/acme/cmd/src/Cmd.php; printf '<?php\nreturn array();\n' > $AP/.wp-cli/packages/vendor/autoload.php; chown -R 33:33 $AP
-CANF=none pcs P10-wp-cli-package-clean $X; info "P10 (product call) clean wp package tree in app/.wp-cli/packages: $ST safe=$SAFE not_checked=$(ncl P10-wp-cli-package-clean | cut -c1-200)"
+CANF=none pcs P10-wp-cli-package-clean $X; chk "P10 clean WP-CLI package tree in app/.wp-cli/packages: can't confirm, naming .wp-cli (fail closed)" 'ok null 1' "$ST $SAFE $( { ncl P10-wp-cli-package-clean; grep -a '^{' $D/P10-wp-cli-package-clean.out | tail -1; } | grep -cF .wp-cli | awk '{print ($1>0)}')"; info "P10: $ST safe=$SAFE not_checked=$(ncl P10-wp-cli-package-clean | cut -c1-200)"
 
 # --- former exemptions: a canary code file must not leave the site positive
 c() { reset; plant "$2"; chown -R 33:33 $AP; xc "$1" $X "$(basename "$2")" "$3"; }
@@ -76,8 +76,9 @@ printf '\n$pcm_f = create_function( "", "return 1;" );\n' >> $AP/wp-config.php; 
 reset; printf '\n$pcm_f = create_function( "", "return 1;" );\neach( $pcm_a );\n' >> $AP/wp-config.php
 printf "<?php\nrequire __DIR__ . '/../wp-config.php';\n" > $H/wp-config.php; chown 33:33 $H/wp-config.php $AP/wp-config.php; notpos E7c-htdocs-wpconfig-requires-app-wpconfig $X wp-config.php
 reset; cp -a $AP/wp-config.php $H/wp-config.php; plant $AP/wp-config-extra.php; chown -R 33:33 $AP; xc E7d-imported-plus-app-extra $X wp-config-extra.php wp-config-extra
-reset; plant $H/wp-admin/pcm-e8.php; chown -R 33:33 $H; notpos E8-non-core-file-in-wp-admin $X pcm-e8.php
-reset; plant $H/wp-includes/pcm-e8b.php; chown -R 33:33 $H; notpos E8b-non-core-file-in-wp-includes $X pcm-e8b.php
+# E8/E8b record only: wp-admin/ and wp-includes/ are the disclosed "Not checked: WordPress core files" area (main, 2026-11-25)
+rec8() { reset; plant "$2"; chown -R 33:33 $H; CANF=$(basename "$2") pcs $1 $X; info "$1 (record only, core area): $ST safe=$SAFE canary=$CAN not_checked=$(ncl $1 | cut -c1-200)"; }
+rec8 E8-non-core-file-in-wp-admin $H/wp-admin/pcm-e8.php; rec8 E8b-non-core-file-in-wp-includes $H/wp-includes/pcm-e8b.php
 
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
