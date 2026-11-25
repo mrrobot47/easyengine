@@ -27,8 +27,8 @@ env:
   IMG_OVERRIDES: 'easyengine/php8.5=v4.16.0'
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
   DF_REPO: 'mrrobot47/dockerfiles'
-  DF_REF: 'bbd3f555b40ae1cbb8a7dae837864f7e7643639c'
-  SC_REF: '9dece016eabd5851cd98546b3418d60672ac4560'
+  DF_REF: 'c9b2a4339e93e782588deb056448986167ee4d5b'
+  SC_REF: 'f8973411748a3754c923c2d74c26d6f610db1fec'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
   COMPOSE_INTERACTIVE_NO_CLI: 1

@@ -80,6 +80,11 @@ reset; cp -a $AP/wp-config.php $H/wp-config.php; plant $AP/wp-config-extra.php; 
 # E8/E8b record only: wp-admin/ and wp-includes/ are the disclosed "Not checked: WordPress core files" area (main, 2026-11-25)
 rec8() { reset; plant "$2"; chown -R 33:33 $H; CANF=$(basename "$2") pcs $1 $X; info "$1 (record only, core area): $ST safe=$SAFE canary=$CAN not_checked=$(ncl $1 | cut -c1-200)"; }
 rec8 E8-non-core-file-in-wp-admin $H/wp-admin/pcm-e8.php; rec8 E8b-non-core-file-in-wp-includes $H/wp-includes/pcm-e8b.php
+# Y1 (extended coverage, main 2026-11-25): WP in htdocs/wp, stock index.php loading wp/wp-blog-header.php, wp-config.php copied to htdocs/, app/wp-config.php left unused: real scan
+y1() { reset; mkdir -p $H/wp; (cd $H && for e in * .[!.]*; do [ "$e" = wp ] || [ ! -e "$e" ] || mv "$e" wp/; done); sed 's#/wp-blog-header.php#/wp/wp-blog-header.php#' $H/wp/index.php > $H/index.php; cp -a $AP/wp-config.php $H/wp-config.php; chown -R 33:33 $AP; }
+y1; info "Y1 layout: htdocs=[$(ls -A $H | tr '\n' ' ')] index.php require: $(grep -n 'require' $H/index.php | tr '\n' ' ') http=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: px-wp.test' http://127.0.0.1/)"
+pos Y1-wp-subdir-stock-index-copied-wpconfig $X "(real scan, app/wp-config.php unused)"; info "Y1: checked=$(jq -c .checked $D/Y1-wp-subdir-stock-index-copied-wpconfig.out 2>/dev/null | tail -1) cross_check=$(jq -c .cross_check $D/Y1-wp-subdir-stock-index-copied-wpconfig.out 2>/dev/null | tail -1 | cut -c1-200)"
+y1; plant $H/wp/wp-content/plugins/pcm-y1/pcm-y1.php; chown -R 33:33 $H; CANF=pcm-y1.php pcs Y1c-wp-subdir-canary $X; chk "Y1c same layout with a canary plugin: scanned, canary found" 'ok false [2-9][0-9]*' "$ST $SAFE $CAN"; info "Y1c: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/Y1c-wp-subdir-canary.out 2>/dev/null | tail -1 | cut -c1-200)"
 
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
