@@ -101,12 +101,23 @@ y3b; info "Y3b WordPress loads: $(wpx $X "eval 'echo ABSPATH;'" 2>&1 | tail -1) 
 # Y3c (record only): Y3b plus the Y3 parent config app/releases/wp-config.php (unloaded, clean)
 y3b; cp -a $AP/releases/2/wp-config.php $AP/releases/wp-config.php; chown 33:33 $AP/releases/wp-config.php; CANF=none pcs Y3c-root-and-parent-config $X; info "Y3c (record only): $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/Y3c-root-and-parent-config.out 2>/dev/null | tail -1 | cut -c1-200) unlisted=$(jq -c '.cross_check.unlisted // empty' $D/Y3c-root-and-parent-config.out 2>/dev/null | tail -1 | cut -c1-200)"
 rm -f $H; mv $AP/releases/2 $H; rm -f $H/wp-config.php; rm -rf $AP/releases
+# Z (#546 58fa1dad): code-named links leaving the site's files, WP-CLI require/inherit, links into live core: never positive
+y1; printf "$LEG" >> $AP/wp-config.php; mkdir -p $AP/.wp-cli/packages/vendor; ln -s ../../../../www/wp-config.php $AP/.wp-cli/packages/vendor/autoload.php; chown -R 33:33 $AP/.wp-cli; chown -h 33:33 $AP/.wp-cli/packages/vendor/autoload.php
+info "Z1 link resolves in the container to: $(cd $SITES_DIR/$X && docker-compose exec -T php readlink -f /var/www/.wp-cli/packages/vendor/autoload.php 2>&1 | tail -1)"; neverpos Z1-wpcli-autoload-link-to-app-wpconfig $X wp-config.php
+reset; mkdir -p $H/wp-includes/dl; plant $H/wp-includes/dl/pcm-z2.php; ln -s ../../wp-includes/dl $H/wp-content/plugins/dl; chown -R 33:33 $H; chown -h 33:33 $H/wp-content/plugins/dl; neverpos Z2-plugin-link-into-wp-includes $X pcm-z2.php
+y1; printf "$LEG" >> $AP/wp-config.php; printf 'path: wp\nrequire:\n  - /var/www/wp-config.php\n' > $H/wp-cli.yml; chown 33:33 $H/wp-cli.yml; neverpos Z3-wpcli-yml-require-app-wpconfig $X wp-config.php
+y1; printf "$LEG" >> $AP/wp-config.php; mkdir -p $AP/.wp-cli; printf 'require:\n  - /var/www/wp-config.php\n' > $AP/.wp-cli/config.yml; chown -R 33:33 $AP/.wp-cli; neverpos Z3b-home-wpcli-config-require $X wp-config.php
+y1; printf "$LEG" >> $AP/wp-config.php; printf 'path: wp\ninherit: /var/www/pcm-z3c.yml\n' > $H/wp-cli.local.yml; printf 'require:\n  - /var/www/wp-config.php\n' > $AP/pcm-z3c.yml; chown -R 33:33 $AP; neverpos Z3c-wpcli-local-inherit-require $X wp-config.php
+# must stay positive: a plugin carrying a dangling non-code link (node_modules/.bin style)
+reset; G=$H/wp-content/plugins/pcm-dang; clean $G/pcm-dang.php; mkdir -p $G/node_modules/.bin; ln -s ../acme/bin/cli.js $G/node_modules/.bin/acme; chown -R 33:33 $G; chown -h 33:33 $G/node_modules/.bin/acme; pos P13-plugin-dangling-noncode-link $X
+reset; G=$H/wp-content/plugins/pcm-dang; clean $G/pcm-dang.php; ln -s gone.php $G/link.php; chown -R 33:33 $G; chown -h 33:33 $G/link.php; CANF=none pcs P13b-plugin-dangling-code-link $X; info "P13b (record only, code-named dangling link): $ST safe=$SAFE not_checked=$(ncl P13b-plugin-dangling-code-link | cut -c1-200) detail=$(jq -r '.detail // empty' $D/P13b-plugin-dangling-code-link.out 2>/dev/null | tail -1 | cut -c1-200)"
 
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
 cp -a $CH/releases/175 $CH/releases/174; chown -R 33:33 $CA; chown -h 33:33 $CH/current $CH/releases/wp-config.php $CH/releases/175/wp-content/uploads $CH/releases/174/wp-content/uploads; rec cur-cicd $C > /dev/null
 rm -rf /var/tmp/px-cur; mkdir -p /var/tmp/px-cur; cp -a $CA/. /var/tmp/px-cur/; creset() { rsync -a --delete /var/tmp/px-cur/ $CA/; chown -R 33:33 $CA; }
 pos E0-cicd $C "(old release 174 beside live 175)"
+creset; info "P12 EE's own wp-cli.yml: [$(tr '\n' ' ' < $CH/wp-cli.yml)]"; pos P12-ee-public-dir-wpcli-yml $C "(EE's --public-dir wp-cli.yml, path: only)"
 plant $CH/releases/174/wp-content/plugins/pcm-old/pcm-e2.php; chown -R 33:33 $CH; CANF=pcm-e2.php pcs E2-old-release-legacy $C; chk "E2 legacy code only in an old release (not served): positive (exempt shape)" 'ok true' "$ST $SAFE"; info "E2: canary=$CAN not_checked=$(ncl E2-old-release-legacy | cut -c1-200)"
 cc() { creset; plant "$2"; chown -R 33:33 $CA; xc "$1" $C "$(basename "$2")" "$3"; }
 cc E3-stray-file-in-releases $CH/releases/pcm-e3.php pcm-e3
