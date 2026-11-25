@@ -207,6 +207,7 @@ jobs:
           - { g: fable, cmds: 'g-fable.sh:' }
           - { g: allow, cmds: 'g-allow.sh:' }
           - { g: delta, cmds: 'g-delta.sh:' }
+          - { g: fab3, cmds: 'g-fab3.sh:' }
     steps:
       - name: Select (commit message [g:a,b] runs only those groups)
         env:
