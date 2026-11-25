@@ -44,6 +44,12 @@ snap() { local L=$1 D=$OUT/snap/$1 s c t; mkdir -p $D/sites $D/ctr; sleep 3
       echo "--- networks"; docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' $c | sort
       echo "--- image digests"; docker image inspect -f '{{join .RepoDigests " "}}' "$(docker inspect -f '{{.Image}}' $c)"; } > $D/ctr/$c.txt 2>&1
     [ "$(docker inspect -f '{{.State.Status}}' $c)" = running ] || docker logs --tail 30 $c > $D/ctr/$c.notrunning.log 2>&1
+    # Effective PHP facts (CLI reads the same conf.d as FPM): New Relic settings, AVIF encode.
+    case $c in *-php-1) [ "$(docker inspect -f '{{.State.Status}}' $c)" = running ] && docker exec $c php -r '
+      echo "nr_loaded=", extension_loaded("newrelic") ? 1 : 0, "\n";
+      foreach (["newrelic.cross_application_tracer.enabled","newrelic.distributed_tracing_enabled","newrelic.span_events_enabled","newrelic.application_logging.enabled","newrelic.application_logging.forwarding.enabled","newrelic.application_logging.metrics.enabled","newrelic.appname"] as $k) echo $k, "=", var_export(ini_get($k), true), "\n";
+      echo "license_set=", (ini_get("newrelic.license") !== false && ini_get("newrelic.license") !== "" && ini_get("newrelic.license") !== "REPLACE_WITH_REAL_KEY") ? 1 : 0, "\n";
+      if (class_exists("Imagick")) { try { $i = new Imagick(); $i->newImage(4, 4, "red"); $i->setImageFormat("avif"); echo "avif_encode=", strlen($i->getImageBlob()) > 0 ? "ok" : "empty", "\n"; } catch (Throwable $e) { echo "avif_encode=fail ", get_class($e), "\n"; } } else { echo "avif_encode=no-imagick\n"; }' > $D/ctr/$c.phpfacts.txt 2>&1 ;; esac
   done > $D/containers.txt
   docker images --format '{{.Repository}}:{{.Tag}}' | sort > $D/images.txt
   for s in $(ls $SITES 2>/dev/null); do mkdir -p $D/sites/$s

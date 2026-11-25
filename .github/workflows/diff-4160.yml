@@ -77,6 +77,10 @@ jobs:
             php $GITHUB_WORKSPACE/wf/$SCRIPTS/pkg-override.php vendor easyengine/$pk $RUNNER_TEMP/pkg-$pk
             echo "easyengine/$pk $rp $sh" | tee -a $OUT/pkg-overrides.txt; done
           if [ -s $OUT/pkg-overrides.txt ]; then composer dump-autoload --no-dev --no-interaction; fi
+          # IMG <image> <tag>: img-versions.json override for a pin PR not merged yet.
+          awk '$1=="IMG"{print $2, $3}' $GITHUB_WORKSPACE/wf/$SCRIPTS/conf.txt | while read -r im tg; do
+            jq --arg i "$im" --arg t "$tg" '.[$i] = $t' img-versions.json > /tmp/iv.json && cp /tmp/iv.json img-versions.json; echo "$im $tg" | tee -a $OUT/img-overrides.txt; done
+          cp img-versions.json $OUT/rc-img-versions.json
           php -dphar.readonly=0 utils/make-phar.php easyengine.phar
           php easyengine.phar cli version | tee $OUT/rc-version.txt
           cp easyengine.phar $OUT/rc.phar
@@ -104,7 +108,7 @@ jobs:
     timeout-minutes: 200
     strategy:
       fail-fast: false
-      max-parallel: 12
+      max-parallel: 20
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - name: Free disk space

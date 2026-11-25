@@ -1,19 +1,27 @@
-CORE_REPO mrrobot47/easyengine
-CORE_SHA 8e4abc5ebb98bd0d3c550d6046edc410928b2d49
-PKG site-command mrrobot47/site-command db3095d80d8ed900f92ad7ca8b622c7d805a0495
-PKG cron-command EasyEngine/cron-command 8bf0dcf25be7a0fa42c527bf5dd6f47b31594f80
+CORE_REPO EasyEngine/easyengine
+CORE_SHA 2abf89c5117ed21e4cdcc89021447bb6f59fc7ab
+PKG site-command mrrobot47/site-command 50adf0adb74de63a5cae6c2abdd2bd7be7e044e9
+PKG cron-command EasyEngine/cron-command aaa84821a99ff28169b3680184a973808cb5fa4b
+IMG easyengine/php8.5 v4.16.0
+RUN wp stable
 RUN wp rc
 RUN wp upgrade
+RUN phphtml stable
 RUN phphtml rc
 RUN phphtml upgrade
+RUN newphp stable
 RUN newphp rc
 RUN newphp upgrade
+RUN edge stable
 RUN edge rc
 RUN edge upgrade
+RUN oldphp stable
 RUN oldphp rc
 RUN oldphp upgrade
+RUN globals stable
 RUN globals rc
 RUN globals upgrade
+RUN ssl stable
 RUN ssl rc
 RUN ssl upgrade
 RUN sidmig from4133-rc
