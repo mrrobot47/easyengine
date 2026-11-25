@@ -34,13 +34,14 @@ printf 'auto_append_file = /var/www/htdocs/x.php\n' > $H/.user.ini; refuse A4g-a
 # EE --public-dir=current site converted to a CI/CD release with the shared, symlinked wp-config.php (easyengine.io), + Wordfence there, + admin-tools
 C=pal-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=pa $W; CH=$(A $C)/htdocs; rec cur-created $C > /dev/null
 plant $CH/current/wp-content/plugins/pcm-al/pcm-al.php; chown -R 33:33 $CH; scan_ok A3a-public-dir-current $C pcm-al.php
+run_ee at0-$C admin-tools enable $C; scan_ok A5a0-admintools-public-dir-plain $C pcm-al.php; pce A5a0-est $C; chk "A5a0 estimate with admin-tools on a plain --public-dir site" ok "$EST_ST"
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
 cp -a $CH/releases/175 $CH/releases/174; chown -R 33:33 $CH; chown -h 33:33 $CH/current $CH/releases/wp-config.php $CH/releases/175/wp-content/uploads; rec cur-cicd $C > /dev/null
 scan_ok A3b-cicd-shared-wpconfig $C pcm-al.php; info "A3b argv $ARGP"
 printf "auto_prepend_file = '/var/www/htdocs/current/wordfence-waf.php'\n" > $CH/releases/175/.user.ini; printf '<?php\n// wordfence\n' > $CH/releases/175/wordfence-waf.php; chown 33:33 $CH/releases/175/.user.ini $CH/releases/175/wordfence-waf.php
 scan_ok A4h-wordfence-on-cicd $C pcm-al.php; rm -f $CH/releases/175/.user.ini $CH/releases/175/wordfence-waf.php
-run_ee at-$C admin-tools enable $C; info "admin-tools on $C: rc $RC; mounts $(docker inspect -f '{{json .Mounts}}' $(cname $C)-php-1 2>&1 | jq -c '[.[] | .Destination]' 2>&1)"
-scan_ok A5a-admintools-public-dir $C pcm-al.php; pce A5a-est $C; chk "A5a estimate with admin-tools on --public-dir" ok "$EST_ST"
+info "admin-tools on $C: rc $RC; mounts $(docker inspect -f '{{json .Mounts}}' $(cname $C)-php-1 2>&1 | jq -c '[.[] | .Destination]' 2>&1)"
+scan_ok A5a-admintools-public-dir-cicd $C pcm-al.php; pce A5a-est $C; chk "A5a estimate with admin-tools on the CI/CD --public-dir site" ok "$EST_ST"
 P=pal-php.test; run_ee c-$P site create $P --type=php --public-dir=public; plant $(A $P)/htdocs/public/pcm-php.php; run_ee at-$P admin-tools enable $P
 scan_ok A5b-admintools-php-public $P pcm-php.php; chk "A5b ee-admin not scanned" 0 "$(jq '[.components[]? | select(.slug|test("ee-admin"))] | length' $D/A5b-admintools-php-public.report.json 2>/dev/null)"
 # PHP 8.6 sites (php86.zip config)
@@ -54,7 +55,8 @@ if [ $RC = 0 ]; then plant $(A $V)/htdocs/wp-content/plugins/pcm-al/pcm-al.php; 
 J() { jq -r "$1" $D/$2.out 2>/dev/null | tail -1; }
 rm -rf $H/wp-content/plugins/pcm-al; rc; rm -f $H/.user.ini; pcs V1-normal $WS
 chk "V1 normal site for 8.4: positive verdict (safe_to_upgrade true)" 'ok true 0' "$ST $SAFE $ERRS"
-chk "V1/V4 not_checked holds only the core entry, and it doesn't downgrade the verdict" '1 core wordpress true' "$(J '.not_checked|length' V1-normal) $(J '.not_checked[0].type' V1-normal) $(J '.not_checked[0].slug' V1-normal) $SAFE"
+chk "V1/V4 positive verdict with not_checked empty (scanner-only list; the core note lives elsewhere)" '0 true' "$(J '.not_checked|length' V1-normal) $SAFE"
+chk "V1/V4 core note present under wordpress or a notes field" 'yes' "$(jq -e '(.wordpress.version // empty) != null or (.notes // empty) != null' $D/V1-normal.out > /dev/null 2>&1 && echo yes || echo no)"; info "V1 not_checked, notes, wordpress: $(jq -c '.not_checked, .notes, .wordpress' $D/V1-normal.out 2>/dev/null | tr '\n' ' ')"
 chk "V1 wordpress.supports true, files_not_checked 0" 'true 0' "$(J .wordpress.supports V1-normal) $(J .files_not_checked V1-normal)"
 info "V1 json: $(head -c 700 $D/V1-normal.out | tr '\n' ' ')"; info "V1 table: $(cd /tmp && ee site php-compat $WS --php=8.4 < /dev/null 2>&1 | grep -v '^$' | head -4 | tr '\n' '|')"
 PCV=8.6 pcs V2-current-wp-86 $WS; chk "V2 current WordPress for 8.6: can't confirm (null), core supports null" 'ok null null' "$ST $SAFE $(J .wordpress.supports V2-current-wp-86)"

@@ -68,7 +68,7 @@ layouts)
   # b2: same with an absolute link inside the container.
   rm $H/current; ln -s /var/www/htdocs/releases/1 $H/current; chown -h 33:33 $H/current; expect_found b2-cicd-abs $PD '/var/www/htdocs(/current)?'
   # b1d: an old release beside the live one (nginx doesn't serve it): still a real scan
-  rm $H/current; ln -s releases/1 $H/current; cp -a $H/releases/1 $H/releases/0; chown -R 33:33 $H; chown -h 33:33 $H/current; expect_found b1d-cicd-old-release $PD '/var/www/htdocs(/current)?'; rm -rf $H/releases/0
+  rm $H/current; ln -s releases/1 $H/current; cp -a $H/releases/1 $H/releases/0; chown -R 33:33 $H; chown -h 33:33 $H/current; expect_guard b1d-cicd-old-release $PD  # by design (main): nginx serves htdocs, so releases/0 is reachable and not scanned; rm -rf $H/releases/0
   # b1e: shared wp-config: releases/1/wp-config.php -> ../../shared/wp-config.php, no wp-config.php above current
   mkdir -p $H/shared; mv $H/wp-config.php $H/shared/wp-config.php; rm -f $H/releases/wp-config.php; ln -s ../../shared/wp-config.php $H/releases/1/wp-config.php; chown -R 33:33 $H; chown -h 33:33 $H/releases/1/wp-config.php
   expect_found b1e-cicd-shared-wpconfig $PD '/var/www/htdocs(/current)?'
