@@ -28,7 +28,7 @@ env:
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
   DF_REPO: 'EasyEngine/dockerfiles'
   DF_REF: ''
-  SC_REF: '075970cd9f95bfb6abee345d4e1811fb529cd47e'
+  SC_REF: '8c8d906d8ec4f3be309266d6072ea03647875e53'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
   COMPOSE_INTERACTIVE_NO_CLI: 1
