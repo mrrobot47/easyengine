@@ -80,9 +80,11 @@ for v in 7.2 7.3-alpha-65773 7.3-alpha-65773-src 7.1-RC2 7.1.1 6.9.1-beta1; do c
 cp -a /var/tmp/pal-version.php $VP; chown 33:33 $VP
 # V6: more than 10 not_checked entries: stdout capped at 10 + not_checked_more, report keeps all
 mkdir -p $H/wp-content/plugins/pcm-many; printf '<?php\n/*\nPlugin Name: PCM Many\n*/\n' > $H/wp-content/plugins/pcm-many/pcm-many.php
-for i in $(seq 1 13); do ln -s /nonexistent/gone$i.php $H/wp-content/plugins/pcm-many/gone$i.php; done; chown -R 33:33 $H/wp-content/plugins/pcm-many; chown -h 33:33 $H/wp-content/plugins/pcm-many/gone*.php
+# dangling inside the plugin (a link leaving the site's files is tool_error since #546 58fa1dad, V6b)
+for i in $(seq 1 13); do ln -s missing$i.php $H/wp-content/plugins/pcm-many/gone$i.php; done; chown -R 33:33 $H/wp-content/plugins/pcm-many; chown -h 33:33 $H/wp-content/plugins/pcm-many/gone*.php
 pcs V6-many-not-checked $WS; info "V6: $ST safe=$SAFE not_checked=$(J '.not_checked|length' V6-many-not-checked) more=$(J .not_checked_more V6-many-not-checked) files_not_checked=$NC report=$(jq '.not_checked|length' $D/V6-many-not-checked.report.json 2>/dev/null)"
 chk "V6 13 dangling .php links: can't confirm, stdout not_checked 10 + not_checked_more 3, report 13" 'ok null 10 3 13' "$ST $SAFE $(J '.not_checked|length' V6-many-not-checked) $(J .not_checked_more V6-many-not-checked) $(jq '.not_checked|length' $D/V6-many-not-checked.report.json 2>/dev/null)"
+ln -s /nonexistent/gone-out.php $H/wp-content/plugins/pcm-many/gone-out.php; chown -h 33:33 $H/wp-content/plugins/pcm-many/gone-out.php; pcs V6b-link-leaving-site $WS; chk "V6b a .php link leaving the site's files: tool_error naming it" 'tool_error null 1' "$ST $SAFE $(jq -r '.detail // empty' $D/V6b-link-leaving-site.out 2>/dev/null | tail -1 | grep -cF gone-out.php)"; rm -f $H/wp-content/plugins/pcm-many/gone-out.php
 rm -rf $H/wp-content/plugins/pcm-many
 chk "no scanner containers left" 0 "$(docker ps -aq --filter ancestor=$SC:v4.16.0 | wc -l)"
 echo "DONE allow" >> $OUT/done.txt
