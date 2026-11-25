@@ -1,0 +1,274 @@
+# php-compat extensive matrix (v4.16.0, 2026-11-24). Temp branch tmp/pc-matrix-4160 on mrrobot47/easyengine = core CORE_SHA + this file as
+# .github/workflows/pc-matrix.yml + ../ci-scripts/pc-matrix-4160/ as .github/pcm/ (SCRIPTS). Build the release phar from CORE_SHA (optionally with
+# site-command replaced by SC_REPO@SC_REF), then the repro matrix (wp --public-dir sites created on old stables or the RC, lifecycle ops, upgrade, scan)
+# and the group matrix (layouts, names, flags, env, quality, ...). Checks print PASS/FAIL/INFO lines; raw evidence is uploaded.
+name: php-compat matrix 4.16.0
+
+on:
+  push:
+    branches:
+      - 'tmp/pc-matrix-4160'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CORE_REPO: EasyEngine/easyengine
+  CORE_SHA: 2abf89c5117ed21e4cdcc89021447bb6f59fc7ab
+  SC_REPO: 'mrrobot47/site-command'
+  # Extra package overrides: space-separated <package dir>=<owner/repo>@<ref>
+  PKG_OVERRIDES: 'cron-command=EasyEngine/cron-command@v2.1.3'
+  # img-versions.json overrides before the phar is built: space-separated <image>=<tag>
+  IMG_OVERRIDES: 'easyengine/php8.5=v4.16.0'
+  # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
+  DF_REPO: 'EasyEngine/dockerfiles'
+  DF_REF: ''
+  SC_REF: '50adf0adb74de63a5cae6c2abdd2bd7be7e044e9'
+  RELEASE_VERSION: '4.16.0'
+  SCRIPTS: .github/pcm
+  COMPOSE_INTERACTIVE_NO_CLI: 1
+
+jobs:
+  build:
+    name: build the phar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.CORE_REPO }}
+          ref: ${{ env.CORE_SHA }}
+          path: core
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:2.10.3
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+      - name: Build
+        working-directory: core
+        run: |
+          composer install --no-dev --no-progress --no-interaction
+          if [ -n "$SC_REF" ]; then
+            rm -rf vendor/easyengine/site-command
+            git clone -q "https://github.com/$SC_REPO" vendor/easyengine/site-command
+            git -C vendor/easyengine/site-command checkout -q "$SC_REF"
+            git -C vendor/easyengine/site-command log -1 --format='site-command %H %s'
+            composer dump-autoload --no-dev
+          fi
+          for o in $PKG_OVERRIDES; do d=${o%%=*}; r=${o#*=}; repo=${r%@*}; ref=${r#*@}
+            rm -rf "vendor/easyengine/$d"; git clone -q "https://github.com/$repo" "vendor/easyengine/$d"; git -C "vendor/easyengine/$d" checkout -q "$ref"
+            git -C "vendor/easyengine/$d" log -1 --format="$d %H %s" | tee -a "$RUNNER_TEMP/refs-extra.txt"; done
+          [ -n "$PKG_OVERRIDES$SC_REF" ] && composer dump-autoload --no-dev
+          for o in $IMG_OVERRIDES; do jq --arg k "${o%%=*}" --arg v "${o#*=}" '.[$k] = $v' img-versions.json > img.tmp && mv img.tmp img-versions.json; echo "img override $o" | tee -a "$RUNNER_TEMP/refs-extra.txt"; done
+          jq -c . img-versions.json | tee -a "$RUNNER_TEMP/refs-extra.txt"
+          php -dphar.readonly=0 utils/make-phar.php easyengine.phar
+          php easyengine.phar cli version
+          mkdir -p "$RUNNER_TEMP/out"; : > "$RUNNER_TEMP/out/refs.txt"; cp easyengine.phar "$RUNNER_TEMP/out/"; cat "$RUNNER_TEMP/refs-extra.txt" >> "$RUNNER_TEMP/out/refs.txt" 2>/dev/null || true
+          [ -d vendor/easyengine/site-command/.git ] && git -C vendor/easyengine/site-command log -1 --format='site-command %H %s' >> "$RUNNER_TEMP/out/refs.txt"
+          jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock >> "$RUNNER_TEMP/out/refs.txt"
+          php -r 'echo file_get_contents("phar://easyengine.phar/vendor/easyengine/site-command/src/helper/Site_PHP_Compat.php");' | sha256sum > "$RUNNER_TEMP/out/compat-sha256.txt"
+          (cd "$RUNNER_TEMP/out" && md5sum easyengine.phar) | tee -a "$RUNNER_TEMP/out/refs.txt"; cat "$RUNNER_TEMP/out/compat-sha256.txt"
+      - name: Build the scanner image (DF_REF)
+        run: |
+          tag=$(php -r 'echo json_decode(file_get_contents("phar://" . $argv[1] . "/img-versions.json"), true)["easyengine/compat-scanner"];' core/easyengine.phar)
+          echo "pinned scanner tag $tag" | tee -a "$RUNNER_TEMP/out/refs.txt"
+          if [ -n "$DF_REF" ]; then
+            git clone -q "https://github.com/$DF_REPO" df && git -C df checkout -q "$DF_REF" && git -C df log -1 --format='dockerfiles %H %s' | tee -a "$RUNNER_TEMP/out/refs.txt"
+            docker build -q -t "easyengine/compat-scanner:$tag" df/compat-scanner
+            docker image inspect -f 'scanner image {{.Id}}' "easyengine/compat-scanner:$tag" | tee -a "$RUNNER_TEMP/out/refs.txt"
+            docker save "easyengine/compat-scanner:$tag" | gzip -1 > "$RUNNER_TEMP/out/scanner.tar.gz"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: phar
+          path: ${{ runner.temp }}/out
+
+  repro:
+    name: repro ${{ matrix.old }}
+    needs: build
+    if: ${{ !contains(github.event.head_commit.message, '[no-repro]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        old: ['rc', '4.15.0', '4.14.2', '4.13.3', '4.12.0', '4.11.0', '4.10.2', '4.9.3', '4.7.6']
+    env:
+      OLD_VERSION: ${{ matrix.old }}
+    steps:
+      - name: Free disk space and set paths
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell
+          docker system prune -af >/dev/null 2>&1 || true
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT"; : > "$OUT/results.txt"; : > "$OUT/done.txt"; chmod 666 "$OUT/results.txt" "$OUT/done.txt"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"; echo "NEW_PHAR=$RUNNER_TEMP/phar/easyengine.phar" >> "$GITHUB_ENV"
+          echo "S=sudo --preserve-env=RES,OUT,NEW_PHAR,OLD_VERSION" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          path: wf
+      - uses: actions/download-artifact@v8
+        with:
+          name: phar
+          path: ${{ runner.temp }}/phar
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+      - name: Prepare the host
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq p7zip-full rclone >/dev/null
+          sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          sudo rclone config create eebk local >/dev/null; sudo mkdir -p /var/tmp/eebk
+      - name: Install EasyEngine ${{ matrix.old }}
+        run: |
+          if [ "$OLD_VERSION" = rc ]; then cp "$NEW_PHAR" "$RUNNER_TEMP/ee.phar"; else
+            curl -fsSL --retry 5 "https://github.com/EasyEngine/easyengine/releases/download/v$OLD_VERSION/easyengine.phar" -o "$RUNNER_TEMP/ee.phar"; fi
+          sudo install -m 0755 "$RUNNER_TEMP/ee.phar" /usr/local/bin/ee
+          ok=0; for i in 1 2 3; do if sudo ee cli info > "$OUT/cli-info-$i.txt" 2>&1; then ok=1; break; fi; cat "$OUT/cli-info-$i.txt"
+            grep -q toomanyrequests "$OUT/cli-info-$i.txt" || break; sleep 120; done
+          cat "$OUT/cli-info-$i.txt"; [ $ok = 1 ]
+          docker-compose version || { sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose; }
+          sudo ee config set rclone-path eebk:/var/tmp/eebk || true
+          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"; fi
+      - name: Create sites
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" create 2>&1 | tail -80
+      - name: Lifecycle on the old version
+        if: ${{ matrix.old != 'rc' }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" ops-old 2>&1 | tail -80
+      - name: Upgrade to the RC
+        if: ${{ matrix.old != 'rc' }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" upgrade 2>&1 | tail -40
+      - name: Scan
+        if: ${{ !cancelled() }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" scan 2>&1 | tail -80
+      - name: Lifecycle on the RC
+        if: ${{ !cancelled() }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" ops-new 2>&1 | tail -120
+      - name: Layouts the record doesn't describe
+        if: ${{ !cancelled() && matrix.old == 'rc' }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" layouts 2>&1 | tail -120
+      - name: --public-dir spellings
+        if: ${{ !cancelled() && matrix.old == 'rc' }}
+        working-directory: wf
+        run: $S bash "$SCRIPTS/repro.sh" variants 2>&1 | tail -120
+      - name: Collect
+        if: always()
+        run: |
+          sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
+          sudo chown -R "$USER" "$OUT"
+          { echo "## repro $OLD_VERSION: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -100
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: repro-${{ matrix.old }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
+
+  groups:
+    name: group ${{ matrix.g }}
+    needs: build
+    if: ${{ !contains(github.event.head_commit.message, '[no-groups]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { g: layouts, cmds: 'g-layouts.sh:' }
+          - { g: names, cmds: 'g-flags.sh:names' }
+          - { g: flags, cmds: 'g-flags.sh:flags' }
+          - { g: cancel, cmds: 'g-flags.sh:cancel' }
+          - { g: env-a, cmds: 'g-env.sh:nonet g-env.sh:olddigest g-env.sh:tmp' }
+          - { g: env-b, cmds: 'g-env.sh:disk g-env.sh:kill g-env.sh:dockerrestart' }
+          - { g: quality, cmds: 'g-quality.sh:' }
+          - { g: opts, cmds: 'g-life.sh:opts' }
+          - { g: phpver, cmds: 'g-life.sh:phpver' }
+          - { g: dev, cmds: 'g-dev.sh:' }
+          - { g: bedrock, cmds: 'g-bedrock.sh:' }
+          - { g: new546, cmds: 'g-new.sh:' }
+          - { g: scope, cmds: 'g-scope.sh:' }
+          - { g: cliupd, cmds: 'g-cliupd.sh:' }
+          - { g: fable, cmds: 'g-fable.sh:' }
+          - { g: allow, cmds: 'g-allow.sh:' }
+    steps:
+      - name: Select (commit message [g:a,b] runs only those groups)
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+          G: ${{ matrix.g }}
+        run: |
+          sel=1; if [[ "$MSG" =~ \[g:([a-z0-9,-]+)\] ]]; then sel=0; [[ ",${BASH_REMATCH[1]}," == *",$G,"* ]] && sel=1; fi
+          echo "SEL=$sel" >> "$GITHUB_ENV"; echo "selected: $sel"
+      - name: Free disk space and set paths
+        if: env.SEL == '1'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell
+          docker system prune -af >/dev/null 2>&1 || true
+          OUT=$RUNNER_TEMP/out; mkdir -p "$OUT"; : > "$OUT/results.txt"; : > "$OUT/done.txt"; chmod 666 "$OUT/results.txt" "$OUT/done.txt"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"; echo "RES=$OUT/results.txt" >> "$GITHUB_ENV"; echo "NEW_PHAR=$RUNNER_TEMP/phar/easyengine.phar" >> "$GITHUB_ENV"
+          echo "S=sudo --preserve-env=RES,OUT,NEW_PHAR" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        if: env.SEL == '1'
+        with:
+          path: wf
+      - uses: actions/download-artifact@v8
+        if: env.SEL == '1'
+        with:
+          name: phar
+          path: ${{ runner.temp }}/phar
+      - uses: shivammathur/setup-php@v2
+        if: env.SEL == '1'
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: pcntl, curl, sqlite3, zip, dom, mbstring, json
+      - name: Prepare the host and install the RC
+        if: env.SEL == '1'
+        run: |
+          sudo systemctl stop nginx apache2 mysql 2>/dev/null || true
+          sudo apt-get install -y -qq sqlite3 jq p7zip-full rclone >/dev/null
+          sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          sudo rclone config create eebk local >/dev/null; sudo mkdir -p /var/tmp/eebk
+          sudo install -m 0755 "$NEW_PHAR" /usr/local/bin/ee
+          ok=0; for i in 1 2 3; do if sudo ee cli info > "$OUT/cli-info-$i.txt" 2>&1; then ok=1; break; fi; cat "$OUT/cli-info-$i.txt"
+            grep -q toomanyrequests "$OUT/cli-info-$i.txt" || break; sleep 120; done
+          cat "$OUT/cli-info-$i.txt"; [ $ok = 1 ]
+          docker-compose version || { sudo curl -fsSL --retry 5 "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-$(uname -m)" -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose; }
+          sudo ee config set rclone-path eebk:/var/tmp/eebk || true
+          if [ -f "$RUNNER_TEMP/phar/scanner.tar.gz" ]; then sudo cp "$RUNNER_TEMP/phar/scanner.tar.gz" /var/tmp/pcm-scanner.tar.gz; gunzip -c /var/tmp/pcm-scanner.tar.gz | sudo docker load; grep 'scanner image\|dockerfiles' "$RUNNER_TEMP/phar/refs.txt"; fi
+      - name: Run ${{ matrix.g }}
+        if: env.SEL == '1'
+        working-directory: wf
+        env:
+          CMDS: ${{ matrix.cmds }}
+        run: |
+          for c in $CMDS; do echo "::group::$c"; s=$(date +%s); $S bash "$SCRIPTS/${c%%:*}" ${c#*:} 2>&1 | tail -150; echo "$c: $(( $(date +%s) - s )) s" | tee -a "$OUT/seconds.txt"; echo "::endgroup::"; done
+      - name: Collect
+        if: always() && env.SEL == '1'
+        run: |
+          sudo sh -c 'mkdir -p "$1/eelogs" && cp -a /opt/easyengine/logs/. "$1/eelogs/"; sqlite3 -header /opt/easyengine/db/ee.sqlite "select * from sites" > "$1/sites-table.txt"' _ "$OUT" || true
+          sudo chown -R "$USER" "$OUT"
+          { echo "## group ${{ matrix.g }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -150
+      - uses: actions/upload-artifact@v7
+        if: always() && env.SEL == '1'
+        with:
+          name: group-${{ matrix.g }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
