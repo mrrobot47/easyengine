@@ -28,7 +28,7 @@ env:
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
   DF_REPO: 'mrrobot47/dockerfiles'
   DF_REF: 'c9b2a4339e93e782588deb056448986167ee4d5b'
-  SC_REF: 'f8973411748a3754c923c2d74c26d6f610db1fec'
+  SC_REF: '2a7a182e352a3ab6f30c33cb9ac1b791ea462d0e'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
   COMPOSE_INTERACTIVE_NO_CLI: 1
@@ -178,7 +178,7 @@ jobs:
           sudo chown -R "$USER" "$OUT"
           tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
           { echo "## repro $OLD_VERSION: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -100
+          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -100 || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -278,7 +278,7 @@ jobs:
           sudo chown -R "$USER" "$OUT"
           tag=$(awk '/^pinned scanner tag/ {print $4}' "$RUNNER_TEMP/phar/refs.txt" 2>/dev/null); echo "INFO | scanner at the end: $(sudo docker image inspect -f '{{.Id}}' "easyengine/compat-scanner:$tag" 2>&1 | head -1)" >> "$RES"
           { echo "## group ${{ matrix.g }}: $(grep -c '^PASS' "$RES") PASS, $(grep -c '^FAIL' "$RES") FAIL"; echo '```'; grep -E '^(FAIL|SCAN|REC)' "$RES" | cut -c1-400; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -150
+          grep -E '^(FAIL|SCAN)' "$RES" | cut -c1-300 | head -150 || true
       - uses: actions/upload-artifact@v7
         if: always() && env.SEL == '1'
         with:
