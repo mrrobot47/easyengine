@@ -85,6 +85,16 @@ y1() { reset; mkdir -p $H/wp; (cd $H && for e in * .[!.]*; do [ "$e" = wp ] || [
 y1; info "Y1 layout: htdocs=[$(ls -A $H | tr '\n' ' ')] index.php require: $(grep -n 'require' $H/index.php | tr '\n' ' ') http=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: px-wp.test' http://127.0.0.1/)"
 pos Y1-wp-subdir-stock-index-copied-wpconfig $X "(real scan, app/wp-config.php unused)"; info "Y1: checked=$(jq -c .checked $D/Y1-wp-subdir-stock-index-copied-wpconfig.out 2>/dev/null | tail -1) cross_check=$(jq -c .cross_check $D/Y1-wp-subdir-stock-index-copied-wpconfig.out 2>/dev/null | tail -1 | cut -c1-200)"
 y1; plant $H/wp/wp-content/plugins/pcm-y1/pcm-y1.php; chown -R 33:33 $H; CANF=pcm-y1.php pcs Y1c-wp-subdir-canary $X; chk "Y1c same layout with a canary plugin: scanned, canary found" 'ok false [2-9][0-9]*' "$ST $SAFE $CAN"; info "Y1c: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/Y1c-wp-subdir-canary.out 2>/dev/null | tail -1 | cut -c1-200)"
+# Y2/Y3 (#546 review F1/F2): EE's unused app/wp-config.php holds legacy code and becomes reachable, or is stale beside a moved root: never positive
+LEG='\n$pcm_f = create_function( "", "return 1;" );\neach( $pcm_a );\n'
+neverpos() { CANF=${3:-wp-config.php} pcs $1 $2; chk "$1: never positive (tool_error / can't confirm / not safe)" 'tool_error null|ok null|ok false' "$ST $SAFE"
+  info "$1: $ST safe=$SAFE errors=$ERRS canary=$CAN http=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $2" http://127.0.0.1/${4:-}) detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-200) error_files=$(jq -c '[.components[]?.findings[]? | select(.type=="ERROR") | .file] | unique' $D/$1.report.json 2>/dev/null | cut -c1-200) unlisted=$(jq -c '.cross_check.unlisted // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-200)"; }
+y1; printf "$LEG" >> $AP/wp-config.php; ln -s ../wp-config.php $H/x.php; chown -h 33:33 $H/x.php; neverpos Y2-htdocs-link-to-app-wpconfig $X wp-config.php x.php
+y1; printf "$LEG" >> $AP/wp-config.php; mkdir -p $H/sub; ln -s /var/www/wp-config.php $H/sub/x.php; chown -R 33:33 $H/sub; chown -h 33:33 $H/sub/x.php; neverpos Y2b-sub-abs-link-to-app-wpconfig $X wp-config.php sub/x.php
+y1; mv $H/wp-config.php $H/wp/wp-config.php; printf "$LEG" >> $AP/wp-config.php; ln -s ../wp-config.php $H/x.php; chown -h 33:33 $H/x.php; neverpos Y2c-config-in-wp-root-plus-link $X wp-config.php x.php
+reset; mkdir -p $AP/releases; mv $H $AP/releases/2; ln -s releases/2 $H; cp -a $AP/wp-config.php $AP/releases/wp-config.php; printf "$LEG" >> $AP/wp-config.php; chown -R 33:33 $AP; chown -h 33:33 $H
+info "Y3 layout: app=[$(ls -A $AP | tr '\n' ' ')] htdocs -> $(readlink $H) releases=[$(ls -A $AP/releases | tr '\n' ' ')]"; neverpos Y3-htdocs-link-to-release-stale-app-wpconfig $X wp-config.php
+rm -f $H; mv $AP/releases/2 $H; rm -rf $AP/releases
 
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
