@@ -72,8 +72,10 @@ chk "V3c WordPress 5.9 for 7.2 (supported range 5.6-8.1): positive" 'ok true tru
 VP=$H/wp-includes/version.php; cp -a $VP /var/tmp/pal-version.php
 for v in 7.2 7.3-alpha-65773 7.3-alpha-65773-src 7.1-RC2 7.1.1 6.9.1-beta1; do cp -a /var/tmp/pal-version.php $VP; sed -i "s/^\\\$wp_version = '[^']*';/\\\$wp_version = '$v';/" $VP
   l=V5-$(echo $v | tr -c 'a-z0-9.\n' '-'); pcs $l-84 $WS; info "V5 $v for 8.4: $ST safe=$SAFE wordpress=$(jq -c .wordpress $D/$l-84.out 2>/dev/null | tail -1) table: $(cd /tmp && ee site php-compat $WS --php=8.4 < /dev/null 2>&1 | grep -v '^$' | head -1 | cut -c1-200)"
-  chk "V5 WordPress $v for 8.4: positive (ok true)" 'ok true' "$ST $SAFE"
-  case $v in 7.2*|7.3*) chk "V5 WordPress $v: wordpress.table_newest set" '.+' "$(jq -r '.wordpress.table_newest // empty' $D/$l-84.out 2>/dev/null | tail -1)" ;; esac
+  case $v in 7.2*|7.3*) chk "V5 WordPress $v (newer than the table) on a PHP 8.5 site, for 8.4 (below the site's PHP): can't confirm" 'ok null' "$ST $SAFE"
+      PCV=8.5 pcs $l-85 $WS; chk "V5 WordPress $v (newer than the table) for 8.5 (the site's PHP): positive" 'ok true' "$ST $SAFE" ;;
+    *) chk "V5 WordPress $v for 8.4: positive (ok true)" 'ok true' "$ST $SAFE" ;; esac
+  case $v in 7.2*|7.3*) chk "V5 WordPress $v: wordpress.table_newest set" '.+' "$(jq -r '.wordpress.table_newest // empty' $D/$l-85.out 2>/dev/null | tail -1)" ;; esac
   PCV=8.6 pcs $l-86 $WS; chk "V5 WordPress $v for 8.6: can't confirm" 'ok null' "$ST $SAFE"; done
 cp -a /var/tmp/pal-version.php $VP; chown 33:33 $VP
 # V6: more than 10 not_checked entries: stdout capped at 10 + not_checked_more, report keeps all
