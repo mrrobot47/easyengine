@@ -71,6 +71,7 @@ X=pfa-del.test; run_ee c-$X site create $X --type=php; plant $(A $X)/htdocs/lega
 while kill -0 $DP 2>/dev/null; do n=$((n+1)); (cd /tmp && timeout 120 ee site php-compat $X --php=8.4 --format=json) < /dev/null > $D/R48-a$n.out 2>&1; echo "$n rc=$? $(jq -r .status $D/R48-a$n.out 2>/dev/null | tail -1) $(head -c 120 $D/R48-a$n.out | tr '\n' ' ')" >> $D/R48-attempts.txt; done; wait $DP; drc=$?
 info "R48 delete rc $drc; $n attempts during the delete: $(cut -c1-160 $D/R48-attempts.txt | tr '\n' ';' | cut -c1-900)"
 chk "R48 no check started during the delete gave a verdict or no_code_found" 0 "$(grep -cE ' (ok|no_code_found) ' $D/R48-attempts.txt)"
+chk "R48 every check during the delete: busy, tool_error, or the site is gone (Error)" 0 "$(grep -cvE '^[0-9]+ rc=[0-9]+ (busy|tool_error|Error:) ' $D/R48-attempts.txt)"; info "R48 outcomes: $(awk '{print $3}' $D/R48-attempts.txt | sort | uniq -c | tr '\n' ' ') tool_error detail: $(grep -h -o '"detail":"[^"]*"' $D/R48-a*.out 2>/dev/null | sort -u | head -3 | tr '\n' ' ')"
 sleep 3; chk "R48 after the delete: no container, temp dir or control file of the site" ' 0' "$(docker ps -a --format '{{.Names}}' | grep "ee-php-compat-$X" | tr '\n' ' ') $(find /opt/easyengine/tmp/php-compat -name "*$X*" 2>/dev/null | wc -l)"
 chk "no scanner containers left (scan and estimate)" 0 "$(docker ps -aq --filter ancestor=$SC:v4.16.0 | wc -l)"
 echo "DONE fable" >> $OUT/done.txt

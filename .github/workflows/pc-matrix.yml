@@ -28,7 +28,7 @@ env:
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
   DF_REPO: 'mrrobot47/dockerfiles'
   DF_REF: 'c9b2a4339e93e782588deb056448986167ee4d5b'
-  SC_REF: '2a7a182e352a3ab6f30c33cb9ac1b791ea462d0e'
+  SC_REF: 'b1110ee56b9658e159e3ad5fbaf4a9d0adc1d07e'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
   COMPOSE_INTERACTIVE_NO_CLI: 1
@@ -100,7 +100,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        old: ['rc', '4.15.0', '4.14.2', '4.13.3', '4.12.0', '4.11.0', '4.10.2', '4.9.3', '4.7.6']
+        # [r:rc] in the commit message: the rc repro job only
+        old: ${{ contains(github.event.head_commit.message, '[r:rc]') && fromJSON('["rc"]') || fromJSON('["rc", "4.15.0", "4.14.2", "4.13.3", "4.12.0", "4.11.0", "4.10.2", "4.9.3", "4.7.6"]') }}
     env:
       OLD_VERSION: ${{ matrix.old }}
     steps:

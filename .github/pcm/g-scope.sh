@@ -37,4 +37,10 @@ printf '%s' "$CANARY" > $BH/zz-rewrite.php; rm -f $BH/zz-delete.php; wait $P1; c
 info "S10 result: $(head -c 300 $D/S10.out); not_checked: $(jq -c .not_checked $D/S10.report.json 2>/dev/null)"
 chk "S10 rewritten mid-scan: checked as it is then (canary found)" '[2-9]' "$(canary S10 zz-rewrite.php)"
 chk "S10 deleted mid-scan: not_checked unreadable, verdict not safe" '1 (false|null)' "$(jq '[.not_checked[] | select(.file|endswith("zz-delete.php"))] | length' $D/S10.report.json 2>/dev/null) $(jq -r .safe_to_upgrade $D/S10.out | tail -1)"
+# S13/S14 (#546 b1110ee5): the site's files missing while its record exists (the window of a delete), or no app/: tool_error, never no_code_found
+gone() { local l=$1 s=$2 p=$3; mv "$p" "$p.pcm-away"; pcs $l $s; chk "$l: tool_error (site files missing), never no_code_found or a verdict" 'tool_error null' "$ST $SAFE"
+  info "$l detail: $(jq -r '.detail // empty' $D/$l.out 2>/dev/null | tail -1 | cut -c1-200)"; pce $l-est $s; chk "$l estimate: not ok/no_code_found" 'tool_error' "$EST_ST"; mv "$p.pcm-away" "$p"; }
+gone S13-wp-site-dir-missing $S $SITES_DIR/$S; gone S13b-php-site-dir-missing $P $SITES_DIR/$P
+gone S14-wp-no-app $S $SITES_DIR/$S/app; gone S14b-php-no-app $P $SITES_DIR/$P/app
+pcs S15-wp-after-restore $S; chk "S15 wp site scans again once its files are back" 'ok true' "$ST $SAFE"
 echo "DONE scope" >> $OUT/done.txt
