@@ -24,6 +24,9 @@ DIS_WPS="$D81 $D82 $D83 $D84 $D85 $D86 $DCUR $DSUB"; DIS_ALL="$DIS_WPS $DH $DP $
 L56=u6-l56.test; L70=u6-l70.test; L72=u6-l72.test; L73=u6-l73.test; L74=u6-l74.test; L80=u6-l80.test; LW74=u6-lw74.test; LW80=u6-lw80.test
 LPW=u6-lpubwp.test; LPP=u6-lpubphp.test; LPN=u6-lpubnest.test; LCUR=u6-lcur.test; LSUB=u6-lsub.test
 LEG_PHP="$L56:5.6 $L70:7.0 $L72:7.2 $L73:7.3 $L74:7.4 $L80:8.0"; LEG_WPS="$LW74 $LW80 $LPW $LCUR $LSUB"; LEG_ALL="$L56 $L70 $L72 $L73 $L74 $L80 $LW74 $LW80 $LPW $LPP $LPN $LCUR $LSUB"
+# PHP minors this release moves to the release tag (from img-versions.json: v4.16.0 at 7765d9f6 = 8.1-8.4; the final heads may add 8.5).
+NEWPHP=$( [ -n "${IMG_JSON:-}" ] && [ -f "$IMG_JSON" ] && jq -r 'to_entries[] | select(.key | test("^easyengine/php[0-9]")) | select(.value == "v4.16.0") | .key | sub("easyengine/php"; "")' "$IMG_JSON" | sort -V | tr '\n' ' ')
+NEWPHP_ALT=$(echo $NEWPHP | sed 's/[.]/\\./g; s/ /|/g'); NEWPHP_IMGS=$(for v in $NEWPHP; do echo -n "php$v "; done)
 # Layout sites are rearranged by layout.sh after create.
 # plugfix <site> <wp-content dir relative to app/htdocs>: the php-compat legacy plugin fixture (create_function, each: 2 errors on PHP >= 8.0).
 plugfix() { local d=$SITES_DIR/$1/app/htdocs/$2/plugins/u6-legacy; mkdir -p $d

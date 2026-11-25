@@ -23,10 +23,13 @@ defaults:
 
 env:
   CORE_REPO: mrrobot47/easyengine
-  CORE_SHA: 7765d9f640762bcb2f41462d18390158a0a61e4b
+  CORE_SHA: 6943554ca97ebe40573a4a4e84d95957f387e023
   RELEASE_VERSION: '4.16.0'
-  EXPECT_REFS: 'easyengine/admin-tools-command=edceb582ea0c0009356ba25801cefadaab3e39ae easyengine/auth-command=2bec5539c7e17391f2d7ad8b33a3eaf20dc84dde easyengine/config-command=49bb3c76b683edc0e1935b8ca49fea4a1bccbc64 easyengine/cron-command=5bafeb45db34bdb467a3adc35760fd5f03159ccd easyengine/dash-command=fd35bd29e48b9af28db8811bd7a974d8c0709c56 easyengine/log-command=9840481de643e853259694291d6f4c61a7ca23b1 easyengine/mailhog-command=1dee0473dfb7011a15af7dae549794d7ab9e2946 easyengine/service-command=93d4266c7ee39b82f6c599673352d6ba2f639c33 easyengine/shell-command=e16751f54ae98ac2d43d54add02fa8befd568f9c easyengine/site-command=98a897853320a58e13e994238bf8b0430b692564 easyengine/site-type-php=6230b69845d4aaa1eb7223df642a1c7455787c48 easyengine/site-type-wp=f3e11abee37839a52a158f7dfc9f88a62cd8f791'
-  EXPECT_IMG: 'compat-scanner=v4.16.0 cron=v4.16.0 newrelic-daemon=v4.16.0 php8.1=v4.16.0 php8.2=v4.16.0 php8.3=v4.16.0 php8.4=v4.16.0 php8.5=v4.15.0 php8.6=v4.15.0 nginx-proxy=v4.14.1 nginx=v4.14.0 postfix=v4.14.0 redis=v4.14.0 mariadb=v4.9.1 mailhog=v4.6.5'
+  EXPECT_REFS: 'easyengine/admin-tools-command=edceb582ea0c0009356ba25801cefadaab3e39ae easyengine/auth-command=2bec5539c7e17391f2d7ad8b33a3eaf20dc84dde easyengine/config-command=49bb3c76b683edc0e1935b8ca49fea4a1bccbc64 easyengine/cron-command=aaa84821a99ff28169b3680184a973808cb5fa4b easyengine/dash-command=fd35bd29e48b9af28db8811bd7a974d8c0709c56 easyengine/log-command=9840481de643e853259694291d6f4c61a7ca23b1 easyengine/mailhog-command=1dee0473dfb7011a15af7dae549794d7ab9e2946 easyengine/service-command=93d4266c7ee39b82f6c599673352d6ba2f639c33 easyengine/shell-command=e16751f54ae98ac2d43d54add02fa8befd568f9c easyengine/site-command=9dece016eabd5851cd98546b3418d60672ac4560 easyengine/site-type-php=6230b69845d4aaa1eb7223df642a1c7455787c48 easyengine/site-type-wp=f3e11abee37839a52a158f7dfc9f88a62cd8f791'
+  EXPECT_IMG: 'compat-scanner=v4.16.0 cron=v4.16.0 newrelic-daemon=v4.16.0 php8.1=v4.16.0 php8.2=v4.16.0 php8.3=v4.16.0 php8.4=v4.16.0 php8.5=v4.16.0 php8.6=v4.15.0 nginx-proxy=v4.14.1 nginx=v4.14.0 postfix=v4.14.0 redis=v4.14.0 mariadb=v4.9.1 mailhog=v4.6.5'
+  # Interim runs only: build with a package at a commit the core lock doesn't pin (<pkg>=<owner/repo>@<sha>; empty = the lock as committed).
+  # Rewrites that package's composer.lock source/dist to the commit before `composer install`; the version label stays the lock's.
+  PKG_OVERRIDE: 'easyengine/site-command=mrrobot47/site-command@9dece016eabd5851cd98546b3418d60672ac4560'
   PHP_EXPECT: '8.1=8.1.34 8.2=8.2.36 8.3=8.3.37 8.4=8.4.28 8.5=8.5.13 8.6=8.6.0'
   SCRIPTS: .github/ext4160
   COMPOSE_INTERACTIVE_NO_CLI: 1
@@ -69,8 +72,13 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$CORE_SHA"
           composer --version | tee "$OUT/composer-version.txt"
+          for o in $PKG_OVERRIDE; do p=${o%%=*}; r=${o#*=}; repo=${r%@*}; sha=${r#*@}
+            was=$(jq -r --arg p "$p" '.packages[] | select(.name == $p) | "\(.version) \(.source.reference)"' composer.lock)
+            jq --indent 4 --arg p "$p" --arg repo "$repo" --arg sha "$sha" '(.packages[] | select(.name == $p)) |= (.source.url = "https://github.com/\($repo).git" | .source.reference = $sha | .dist.url = "https://api.github.com/repos/\($repo)/zipball/\($sha)" | .dist.reference = $sha)' composer.lock > "$RUNNER_TEMP/lock.o" && mv "$RUNNER_TEMP/lock.o" composer.lock
+            echo "INFO | build: PKG_OVERRIDE $p -> $repo@$sha (lock pinned $was; the version label stays)" | tee -a "$RES"; done
           composer install --no-dev --no-progress --no-interaction
-          test -z "$(git status --porcelain -- composer.json composer.lock)"
+          test -z "$(git status --porcelain -- composer.json)"
+          [ -n "$PKG_OVERRIDE" ] || test -z "$(git status --porcelain -- composer.lock)"
           cp composer.json composer.lock "$OUT/"
           jq -r '.packages[] | select(.name | startswith("easyengine/")) | "\(.name) \(.version) \(.source.reference)"' composer.lock | tee "$OUT/easyengine-refs.txt"
           for kv in $EXPECT_REFS; do p=${kv%%=*}; e=${kv#*=}; g=$(jq -r --arg p "$p" '.packages[] | select(.name == $p) | .source.reference' composer.lock)
@@ -103,6 +111,11 @@ jobs:
             g=$(php -r '$a = require $argv[1]; echo $a["versions"][$argv[2]]["reference"];' "$RUNNER_TEMP/x/vendor/composer/installed.php" $k)
             [ "$g" = "$e" ] && r=PASS || r=FAIL; echo "$r | build: phar installed.php $k reference | exp $e | got $g" | tee -a "$RES"; done
           (cd "$RUNNER_TEMP/x" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$OUT/phar-files.sha256"
+          for o in $PKG_OVERRIDE; do p=${o%%=*}; r=${o#*=}; repo=${r%@*}; sha=${r#*@}; G=$RUNNER_TEMP/ovr-${p#*/}
+            git init -q "$G" && git -C "$G" fetch -q --depth 1 "https://github.com/$repo.git" "$sha" && git -C "$G" ls-tree -r "$sha" | awk '{print $3, $4}' | sort -k2 > "$G.tree"
+            n=0; bad=; while read -r fp; do n=$((n+1)); rel=${fp#$RUNNER_TEMP/x/vendor/$p/}; e=$(awk -v f="$rel" '$2==f {print $1}' "$G.tree"); g=$(git hash-object "$fp")
+              [ "$e" = "$g" ] || bad="$bad $rel"; done < <(find "$RUNNER_TEMP/x/vendor/$p" -type f | LC_ALL=C sort)
+            [ "$n" -gt 0 ] && [ -z "$bad" ] && r=PASS || r=FAIL; echo "$r | build: PKG_OVERRIDE phar files of $p = git blobs at $sha | $n files, differing:${bad:- none}" | tee -a "$RES"; done
           Z=$RUNNER_TEMP/x/vendor/easyengine/site-command/templates/config/php-fpm
           for v in 81 82 83 84 85 86; do echo "php$v.zip newrelic.ini: $(unzip -l "$Z/php$v.zip" | grep -c 'conf.d/newrelic.ini')"; done | tee "$OUT/zip-newrelic.txt"
           OLDD=$(awk '$1=="OLD_DIGESTS" {print $2}' "$GITHUB_WORKSPACE/wf/$SCRIPTS/knobs.txt")

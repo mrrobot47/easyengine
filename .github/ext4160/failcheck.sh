@@ -82,12 +82,12 @@ faillate)
   has "$L: ee.log: ee-update-docker-compose failed" "Error while executing ee-update-docker-compose" "$(cat $LOG)"
   has "$L: ee.log: container migrations kept" "Keeping the container migrations of this run" "$(cat $LOG)"
   chk "$L: no site or global step reverted" 0 "$(grep -cE 'Reverting (upgrade-|disable-|backup-global|enable-support)' $LOG)"
-  for s in $ENABLED; do case $(f $(phpc $s) 6 $B/containers.txt) in easyengine/php8.[1-4]:*)
-    chk "$L: $s php on v4.16.0 (the image step completed)" "easyengine/php8\.[1-4]:v4\.16\.0" "$(f $(phpc $s) 6 $A/containers.txt)"
+  for s in $ENABLED; do case $(f $(phpc $s) 6 $B/containers.txt) in easyengine/php*) [[ $(f $(phpc $s) 6 $B/containers.txt) =~ ^easyengine/php($NEWPHP_ALT): ]] || continue
+    chk "$L: $s php on v4.16.0 (the image step completed)" "easyengine/php($NEWPHP_ALT):v4\.16\.0" "$(f $(phpc $s) 6 $A/containers.txt)"
     chk "$L: $s php runs the GO digest" yes "$(digest_ok $(phpc $s) $(f $(phpc $s) 6 $A/containers.txt | sed -E 's#easyengine/([^:]+):.*#\1#'))" ;; esac; done
   for n in cron newrelic-daemon; do eqs "$L: global $n on v4.16.0" "easyengine/$n:v4.16.0" "$(f services_global-${n}_1 6 $A/containers.txt)"; done
-  for k in easyengine/cron easyengine/php8.2 easyengine/php8.3 easyengine/php8.4; do eqs "$L: options $k written by the image step" "$(tag $k)" "$(db "select value from options where key='$k'")"; done
-  chk "$L: other options rows unchanged" "" "$(diff <(grep -vE '^(easyengine/(cron|php8\.[2-4])|version)\|' $B/options.txt) <(grep -vE '^(easyengine/(cron|php8\.[2-4])|version)\|' $A/options.txt) | grep '^[<>]' | tr '\n' ' ')"
+  for k in $(cut -d'|' -f1 $B/options.txt | grep -xE "easyengine/(cron|php($NEWPHP_ALT))"); do eqs "$L: options $k written by the image step" "$(tag $k)" "$(db "select value from options where key='$k'")"; done
+  chk "$L: other options rows unchanged" "" "$(diff <(grep -vE "^(easyengine/(cron|php($NEWPHP_ALT))|version)\|" $B/options.txt) <(grep -vE "^(easyengine/(cron|php($NEWPHP_ALT))|version)\|" $A/options.txt) | grep '^[<>]' | tr '\n' ' ')"
   chk "$L: no pending global compose snapshot" absent "$([ -e /opt/easyengine/.backup/services/docker-compose.yml.backup.pending ] && echo present || echo absent)"
   info "$L: options rows of the image step say v4.16.0 while options.version says $OLD_VERSION (documented: the image step commits its rows; the retry finishes the run)" ;;
 esac

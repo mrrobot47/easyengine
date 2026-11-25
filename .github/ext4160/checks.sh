@@ -34,12 +34,13 @@ for s in $ENABLED; do p=$(cname $s)-
   d=$(diff <(grep "^$p" $B/containers.txt | cut -f1,2,4) <(grep "^$p" $A/containers.txt | cut -f1,2,4) | grep -c '^[<>]')
   [ "$d" -gt 0 ] && echo $s >> $X/actual-recreated.txt; done
 eqs "sites recreated (any container ID/StartedAt changed) = derived set" "$(sort $X/expected-recreated.txt | tr '\n' ' ')" "$(sort $X/actual-recreated.txt | tr '\n' ' ')"
-# v4.16.0: php8.1-8.4 change on every path, so every enabled site whose php container ran php8.1-8.4 before is recreated; from 4.15.0 exactly those (8.5/8.6 and html kept).
-for s in $ENABLED; do case $(f $(phpc $s) 6 $B/containers.txt) in easyengine/php8.[1-4]:*) echo $s ;; esac; done | sort > $X/sites-81-84.txt
-info "derived: enabled sites on php8.1-8.4 before: $(tr '\n' ' ' < $X/sites-81-84.txt)"
-chk "every enabled php8.1-8.4 site is in the recreated set" "" "$(comm -23 $X/sites-81-84.txt <(sort $X/actual-recreated.txt) | tr '\n' ' ')"
-chk "php8.1, 8.2, 8.3 and 8.4 sites exist before (population)" 4 "$(for s in $(cat $X/sites-81-84.txt); do f $(phpc $s) 6 $B/containers.txt | cut -d: -f1; done | sort -u | wc -l)"
-[ "$OLD_VERSION" = 4.15.0 ] && eqs "4.15.0: recreated set = exactly the enabled php8.1-8.4 sites" "$(tr '\n' ' ' < $X/sites-81-84.txt)" "$(sort $X/actual-recreated.txt | tr '\n' ' ')"
+# v4.16.0: the php minors pinned at v4.16.0 (NEWPHP) change on every path, so every enabled site on one of them is recreated; from 4.15.0 exactly those.
+chk "php minors pinned at v4.16.0, derived from IMG_JSON (an empty list would pass the checks below vacuously)" '([0-9]+\.[0-9]+ )+' "$NEWPHP"
+for s in $ENABLED; do [[ $(f $(phpc $s) 6 $B/containers.txt) =~ ^easyengine/php($NEWPHP_ALT): ]] && echo $s; done | sort > $X/sites-81-84.txt
+info "derived: enabled sites on php $NEWPHP before: $(tr '\n' ' ' < $X/sites-81-84.txt)"
+chk "every enabled site on php $NEWPHP is in the recreated set" "" "$(comm -23 $X/sites-81-84.txt <(sort $X/actual-recreated.txt) | tr '\n' ' ')"
+chk "sites on each of php $NEWPHP exist before (population)" "$(echo $NEWPHP | wc -w)" "$(for s in $(cat $X/sites-81-84.txt); do f $(phpc $s) 6 $B/containers.txt | cut -d: -f1; done | sort -u | wc -l)"
+[ "$OLD_VERSION" = 4.15.0 ] && eqs "4.15.0: recreated set = exactly the enabled sites on php $NEWPHP" "$(tr '\n' ' ' < $X/sites-81-84.txt)" "$(sort $X/actual-recreated.txt | tr '\n' ' ')"
 
 # Per site containers.
 for s in $ENABLED; do p=$(cname $s)-
@@ -76,7 +77,7 @@ done
 # Digests: every container on a v4.16.0 image runs the GO.env digest of that image; at least one container per updated image.
 for c in $(awk -F'\t' '$6 ~ /^easyengine\/[^:]+:v4\.16\.0$/ {print $1}' $A/containers.txt); do i=$(f $c 6 $A/containers.txt); n=${i#easyengine/}; n=${n%%:*}
   chk "$c: runs easyengine/$n@<GO digest>" yes "$(digest_ok $c $n)"; done
-for n in cron php8.1 php8.2 php8.3 php8.4 newrelic-daemon; do
+for n in cron $NEWPHP_IMGS newrelic-daemon; do
   chk "containers on easyengine/$n:v4.16.0 after the upgrade" '[1-9][0-9]*' "$(awk -F'\t' -v i="easyengine/$n:v4.16.0" '$6==i' $A/containers.txt | wc -l)"; done
 
 # Globals.
@@ -107,7 +108,7 @@ info "upgrade: ee.log lines naming compat-scanner: $(grep -c compat-scanner $U/e
 # DB.
 chk "DB: options version" "$(re "$NEW_VERSION")" "$(db "select value from options where key='version'")"
 for k in $(cat $X/updated-recorded.txt); do chk "DB: options $k after" "$(re "$(tag $k)")" "$(db "select value from options where key='$k'")"; done
-for n in cron php8.1 php8.2 php8.3 php8.4 newrelic-daemon compat-scanner; do k=easyengine/$n
+for n in cron $NEWPHP_IMGS newrelic-daemon compat-scanner; do k=easyengine/$n
   bv=$(grep "^$k|" $B/options.txt | cut -d'|' -f2); av=$(grep "^$k|" $A/options.txt | cut -d'|' -f2)
   if [ $n = compat-scanner ]; then e=absent; elif [ -n "$bv" ]; then e=$(tag $k); else e=absent; fi
   eqs "DB: options $k (before ${bv:-absent}; rows are updated, never added)" "$e" "${av:-absent}"; done

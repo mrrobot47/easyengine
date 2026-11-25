@@ -62,7 +62,7 @@ post)
     fi
     info "$L: $s images before [$old] after [$(grep -oE 'easyengine/[a-z0-9.-]+:v[0-9.]+' $D/compose-after/$s.yml | sort -u | tr '\n' ' ')]"; done
   chk "$L: no ee.WARNING about a disabled site's compose file" 0 "$(grep -c 'Could not update docker-compose.yml of the disabled site' $U/ee.log.part)"
-  info "$L: images of the disabled sites' new tags present after the upgrade's prune: $(for t in php8.1 php8.2 php8.3 php8.4; do docker image inspect easyengine/$t:$(tag easyengine/$t) > /dev/null 2>&1 && echo "$t=yes" || echo "$t=no"; done | tr '\n' ' ')"
+  info "$L: images of the disabled sites' new tags present after the upgrade's prune: $(for t in $NEWPHP_IMGS; do docker image inspect easyengine/$t:$(tag easyengine/$t) > /dev/null 2>&1 && echo "$t=yes" || echo "$t=no"; done | tr '\n' ' ')"
   for s in $DIS_ALL; do c enable-$s site enable $s; chk "$L: ee site enable $s rc" 0 "$RC"
     eqs "$L: $s site_enabled after enable" 1 "$(db "select site_enabled from sites where site_url='$s'")"
     page_ok "$L" $s

@@ -3,49 +3,49 @@
   "id": "failpull-4.15.0",
   "old": "4.15.0",
   "scen": "failpull",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "failpull-mid-4.15.0",
   "old": "4.15.0",
   "scen": "failpull-mid",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "faillate-site-4.15.0",
   "old": "4.15.0",
   "scen": "faillate-site",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "faillate-4.15.0",
   "old": "4.15.0",
   "scen": "faillate",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "disabled-4.15.0",
   "old": "4.15.0",
   "scen": "disabled",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "legacy-4.15.0",
   "old": "4.15.0",
   "scen": "legacy",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "from-4.14.2",
@@ -91,9 +91,9 @@
   "id": "from-4.15.0",
   "old": "4.15.0",
   "scen": "plain",
-  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4",
+  "json_changed": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5",
   "json_added": "easyengine/compat-scanner",
-  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4"
+  "expect_updated": "easyengine/cron easyengine/newrelic-daemon easyengine/php8.1 easyengine/php8.2 easyengine/php8.3 easyengine/php8.4 easyengine/php8.5"
  },
  {
   "id": "from-4.14.0",
