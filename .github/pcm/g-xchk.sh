@@ -20,8 +20,9 @@ function pcm_clean() { return 1; }
 clean() { mkdir -p "$(dirname "$1")"; printf '%s' "$CLEAN" > "$1"; }
 X=px-wp.test; run_ee c-$X site create $X --type=wp --title=px $W; AP=$SITES_DIR/$X/app; H=$AP/htdocs; chown -R 33:33 $AP
 info "fresh app/: $(cd $AP && find . -maxdepth 2 | sort | tr '\n' ' ' | cut -c1-600)"
-rm -rf /var/tmp/px-app; cp -a $AP /var/tmp/px-app
-reset() { rsync -a --delete /var/tmp/px-app/ $AP/; chown -R 33:33 $AP; }
+# app/ is a link to the site's docker volume: snapshot its contents, not the link
+rm -rf /var/tmp/px-app; mkdir -p /var/tmp/px-app; cp -a $AP/. /var/tmp/px-app/; [ -L /var/tmp/px-app ] && exit 1
+reset() { rsync -a --delete /var/tmp/px-app/ $AP/; chown -R 33:33 $AP; [ -z "$(cd $AP && find . -name 'pcm-*' -o -name '.pcm*' | head -1)" ] || info "reset left: $(cd $AP && find . -name 'pcm-*' | head -3 | tr '\n' ' ')"; }
 
 # --- must stay positive
 pos P0-fresh $X
@@ -83,7 +84,7 @@ rec8 E8-non-core-file-in-wp-admin $H/wp-admin/pcm-e8.php; rec8 E8b-non-core-file
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
 cp -a $CH/releases/175 $CH/releases/174; chown -R 33:33 $CA; chown -h 33:33 $CH/current $CH/releases/wp-config.php $CH/releases/175/wp-content/uploads $CH/releases/174/wp-content/uploads; rec cur-cicd $C > /dev/null
-rm -rf /var/tmp/px-cur; cp -a $CA /var/tmp/px-cur; creset() { rsync -a --delete /var/tmp/px-cur/ $CA/; chown -R 33:33 $CA; }
+rm -rf /var/tmp/px-cur; mkdir -p /var/tmp/px-cur; cp -a $CA/. /var/tmp/px-cur/; creset() { rsync -a --delete /var/tmp/px-cur/ $CA/; chown -R 33:33 $CA; }
 pos E0-cicd $C "(old release 174 beside live 175)"
 plant $CH/releases/174/wp-content/plugins/pcm-old/pcm-e2.php; chown -R 33:33 $CH; CANF=pcm-e2.php pcs E2-old-release-legacy $C; chk "E2 legacy code only in an old release (not served): positive (exempt shape)" 'ok true' "$ST $SAFE"; info "E2: canary=$CAN not_checked=$(ncl E2-old-release-legacy | cut -c1-200)"
 cc() { creset; plant "$2"; chown -R 33:33 $CA; xc "$1" $C "$(basename "$2")" "$3"; }

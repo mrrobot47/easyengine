@@ -25,7 +25,7 @@ unset CANF
 # php: code beside htdocs (/var/www/src), dot dirs skipped, dangling htdocs
 P=ps-php.test; run_ee c-$P site create $P --type=php; PA=$SITES_DIR/$P/app
 CANF=pcm-src.php; plant $PA/src/pcm-src.php; pcs S6-beside $P; chk "S6 php code beside htdocs (app/src) found" '[2-9]:false' "$CAN:$SAFE"; info "S6 components: $(jq -c '[.components[] | "\(.type):\(.slug)"]' $D/S6-beside.report.json)"
-CANF=pcm-comp.php; plant $PA/.composer/vendor/x/pcm-comp.php; pcs S7-dot $P; chk "S7 php .composer with code: can't confirm, or scanned" 'ok:null:0|ok:false:[2-9][0-9]*' "$ST:$SAFE:$CAN"; rm -rf $PA/.composer; rm -rf $PA/src
+rm -rf $PA/src; CANF=pcm-comp.php; plant $PA/.composer/vendor/x/pcm-comp.php; pcs S7-dot $P; chk "S7 php .composer with code: can't confirm, or scanned" 'ok:null:0|ok:false:[2-9][0-9]*' "$ST:$SAFE:$CAN"; rm -rf $PA/.composer; rm -rf $PA/src
 mkdir -p $PA/src/lib; plant $PA/src/lib/pcm-deep.php; ln -s ../src/lib $PA/htdocs/deeplib; CANF=pcm-deep.php pcs S7b-deep $P; chk "S7b php htdocs/deeplib -> ../src/lib (app sibling): found exactly once" '2:false' "$CAN:$SAFE"; rm -f $PA/htdocs/deeplib; rm -rf $PA/src
 mv $PA/htdocs $PA/htdocs.real; ln -s /nonexistent/htdocs $PA/htdocs; pcs S8-dangling $P; chk "S8 php htdocs a dangling link: can't confirm or tool_error, not no_code_found" 'ok null|tool_error null' "$ST $SAFE"; rm $PA/htdocs; mv $PA/htdocs.real $PA/htdocs
 mv $H/wp-content /srv/ps-wpc; ln -s /srv/ps-wpc $H/wp-content; pcs S9-wpc-host $S; chk "S9 wp-content -> host path: can't confirm or tool_error, not no_code_found" 'ok null|tool_error null' "$ST $SAFE"; rm $H/wp-content; mv /srv/ps-wpc $H/wp-content
