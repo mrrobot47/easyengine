@@ -216,6 +216,7 @@ jobs:
           - { g: delta, cmds: 'g-delta.sh:' }
           - { g: fab3, cmds: 'g-fab3.sh:' }
           - { g: xchk, cmds: 'g-xchk.sh:' }
+          - { g: u0, cmds: 'g-u0.sh:' }
     steps:
       - name: Select (commit message [g:a,b] runs only those groups)
         env:
