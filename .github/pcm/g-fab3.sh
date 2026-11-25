@@ -21,7 +21,7 @@ rc; rm -rf $H/wp-content/plugins/pcm-t; inj "\$base = &\$wp_filter;" $WPC; CANF=
 rc; find $H -mindepth 1 -delete; cp -a /var/tmp/pf3-pristine $H/wp; printf '<?php\ndefine( "WP_USE_THEMES", true );\nrequire __DIR__ . "/wp/wp-blog-header.php";\n' > $H/index.php; mv $WPC $H/wp-config.php
 mkdir -p $H/.well-known; plant $H/.well-known/pcm-wk.php; chown -R 33:33 $H; notpos T36-well-known-a2 $WS pcm-wk.php; find $H -mindepth 1 -delete; cp -a /var/tmp/pf3-pristine/. $H/; rc; chown -R 33:33 $H
 # T63: an imported full tree in htdocs with its own wp-config.php beside EE's app/wp-config.php: real scan
-rc; cp -a $WPC $H/wp-config.php; chown 33:33 $H/wp-config.php; realscan T63-imported-tree-own-wpconfig $WS pcm-t.php; rm -f $H/wp-config.php
+rc; plant $H/wp-content/plugins/pcm-t/pcm-t.php; cp -a $WPC $H/wp-config.php; chown -R 33:33 $H; realscan T63-imported-tree-own-wpconfig $WS pcm-t.php; rm -f $H/wp-config.php
 # a mu-plugin requiring /var/www/.composer/vendor/autoload.php, canary in that vendor dir: never positive
 rc; rm -rf $H/wp-content/plugins/pcm-t; mkdir -p $AP/.composer/vendor/acme; plant $AP/.composer/vendor/acme/pcm-composer.php; printf '<?php
 require __DIR__ . "/acme/pcm-composer.php";
