@@ -44,14 +44,14 @@ services:
         target: /var/www/htdocs/wp-content/plugins/mounted-plug
         read_only: true
 Y
-f9 comment ok <<'Y'
+f9 comment tool_error <<'Y'
 services:
   php:
     volumes:
       # - /srv/pcm/plug:/var/www/htdocs/wp-content/plugins/mounted-plug:ro
       - /srv/pcm/logs:/var/log/pcm
 Y
-f9 outside ok <<'Y'
+f9 outside tool_error <<'Y'
 services:
   php:
     environment:
