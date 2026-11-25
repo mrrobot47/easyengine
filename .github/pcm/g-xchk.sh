@@ -5,9 +5,9 @@
 command -v rsync > /dev/null || apt-get install -y -qq rsync > /dev/null 2>&1
 git config --global --add safe.directory '*'
 ncl() { jq -c '.not_checked // [] | map(tostring)' "$D/$1.report.json" 2>/dev/null || jq -c '.not_checked // [] | map(tostring)' "$D/$1.out" 2>/dev/null | tail -1; }
-# xc <label> <site> <canary basename> <dir token>: can't confirm with the file (or its dir) in not_checked, or scanned (canary found).
+# xc <label> <site> <canary basename> <dir token>: can't confirm or tool_error (pre-scan layout check, main 2026-11-25) naming the file or its dir, or scanned (canary found).
 xc() { local l=$1 s=$2 f=$3 t=${4:-$3} L; CANF=$f pcs $l $s; L=$( { ncl $l; grep -a '^{' "$D/$l.out" | tail -1; } | grep -cF -e "$f" -e "$t" | awk '{print ($1>0)}')
-  chk "$l: can't confirm with it named (not_checked or detail), or scanned (canary found)" 'ok null L=1 C=0|ok false L=[01] C=[2-9][0-9]*' "$ST $SAFE L=$L C=$CAN"
+  chk "$l: never positive; can't confirm or tool_error with it named (not_checked or detail), or scanned (canary found)" 'ok null L=1 C=0|tool_error null L=1 C=0|ok false L=[01] C=[2-9][0-9]*' "$ST $SAFE L=$L C=$CAN"
   info "$l: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/$l.out 2>/dev/null | tail -1 | cut -c1-200) not_checked=$(ncl $l | cut -c1-300)"; }
 notpos() { CANF=$3 pcs $1 $2; chk "$1: never positive (tool_error / can't confirm / canary found)" 'tool_error null [0-9]*|ok null [0-9]*|ok false [2-9][0-9]*' "$ST $SAFE $CAN"; info "$1: $ST safe=$SAFE canary=$CAN detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-250) not_checked=$(ncl $1 | cut -c1-300)"; }
 pos() { CANF=none pcs $1 $2; chk "$1: positive (ok true, nothing unchecked)${3:+ $3}" 'ok true \[\]' "$ST $SAFE $(ncl $1)"; [ "$SAFE" = true ] || info "$1: $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-250) not_checked=$(ncl $1 | cut -c1-400)"; }
@@ -42,7 +42,7 @@ reset; G=$H/wp-content/plugins/pcm-dev; clean $G/pcm-dev.php; printf '<?php\nret
 printf '<?php\nnamespace PHPSTORM_META {\n\toverride( \\pcm_clean(0), map( array( "" => "@" ) ) );\n}\n' > $G/.phpstorm.meta.php; mkdir -p $G/vendor/acme; printf '<?php\nreturn array();\n' > $G/vendor/acme/.php_cs.dist; chown -R 33:33 $H; pos P8-plugin-dot-named-php $X "(.php-cs-fixer.dist.php, .phpstorm.meta.php)"
 reset; mkdir -p $AP/src/plug; clean $AP/src/plug/sib.php; ln -s ../../../src/plug $H/wp-content/plugins/sib; chown -R 33:33 $AP; chown -h 33:33 $H/wp-content/plugins/sib; pos P9-clean-plugin-linked-to-app-sibling $X
 reset; mkdir -p $AP/.wp-cli/packages/vendor/acme/cmd/src; printf '<?php\nnamespace Acme;\nclass Cmd { public function __invoke() { return 1; } }\n' > $AP/.wp-cli/packages/vendor/acme/cmd/src/Cmd.php; printf '<?php\nreturn array();\n' > $AP/.wp-cli/packages/vendor/autoload.php; chown -R 33:33 $AP
-CANF=none pcs P10-wp-cli-package-clean $X; chk "P10 clean WP-CLI package tree in app/.wp-cli/packages: can't confirm, naming .wp-cli (fail closed)" 'ok null 1' "$ST $SAFE $( { ncl P10-wp-cli-package-clean; grep -a '^{' $D/P10-wp-cli-package-clean.out | tail -1; } | grep -cF .wp-cli | awk '{print ($1>0)}')"; info "P10: $ST safe=$SAFE not_checked=$(ncl P10-wp-cli-package-clean | cut -c1-200)"
+CANF=none pcs P10-wp-cli-package-clean $X; chk "P10 clean WP-CLI package tree in app/.wp-cli/packages: can't confirm or tool_error, naming .wp-cli (fail closed)" 'ok null 1|tool_error null 1' "$ST $SAFE $( { ncl P10-wp-cli-package-clean; grep -a '^{' $D/P10-wp-cli-package-clean.out | tail -1; } | grep -cF .wp-cli | awk '{print ($1>0)}')"; info "P10: $ST safe=$SAFE not_checked=$(ncl P10-wp-cli-package-clean | cut -c1-200)"
 
 # --- former exemptions: a canary code file must not leave the site positive
 c() { reset; plant "$2"; chown -R 33:33 $AP; xc "$1" $X "$(basename "$2")" "$3"; }
