@@ -26,8 +26,8 @@ env:
   # img-versions.json overrides before the phar is built: space-separated <image>=<tag>
   IMG_OVERRIDES: 'easyengine/php8.5=v4.16.0'
   # Scanner image built from DF_REPO@DF_REF and loaded as the pinned tag on every job (empty: the registry image).
-  DF_REPO: 'EasyEngine/dockerfiles'
-  DF_REF: ''
+  DF_REPO: 'mrrobot47/dockerfiles'
+  DF_REF: 'be75edaec81b98cc4dfd650c96cb66b602bdc170'
   SC_REF: '9dece016eabd5851cd98546b3418d60672ac4560'
   RELEASE_VERSION: '4.16.0'
   SCRIPTS: .github/pcm
