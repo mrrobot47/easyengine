@@ -95,6 +95,12 @@ y1; mv $H/wp-config.php $H/wp/wp-config.php; printf "$LEG" >> $AP/wp-config.php;
 reset; mkdir -p $AP/releases; mv $H $AP/releases/2; ln -s releases/2 $H; cp -a $AP/wp-config.php $AP/releases/wp-config.php; printf "$LEG" >> $AP/wp-config.php; chown -R 33:33 $AP; chown -h 33:33 $H
 info "Y3 layout: app=[$(ls -A $AP | tr '\n' ' ')] htdocs -> $(readlink $H) releases=[$(ls -A $AP/releases | tr '\n' ' ')]"; neverpos Y3-htdocs-link-to-release-stale-app-wpconfig $X wp-config.php
 rm -f $H; mv $AP/releases/2 $H; rm -rf $AP/releases
+# Y3b: same link, the root's own clean releases/2/wp-config.php (web and wp --path load it), stale app/wp-config.php with legacy code: positive
+y3b() { reset; mkdir -p $AP/releases; mv $H $AP/releases/2; ln -s releases/2 $H; cp -a $AP/wp-config.php $AP/releases/2/wp-config.php; printf "$LEG" >> $AP/wp-config.php; chown -R 33:33 $AP; chown -h 33:33 $H; }
+y3b; info "Y3b WordPress loads: $(wpx $X "eval 'echo ABSPATH;'" 2>&1 | tail -1) http=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: px-wp.test' http://127.0.0.1/)"; pos Y3b-release-root-own-config-stale-app-wpconfig $X "(root config loaded, app/wp-config.php stale)"
+# Y3c (record only): Y3b plus the Y3 parent config app/releases/wp-config.php (unloaded, clean)
+y3b; cp -a $AP/releases/2/wp-config.php $AP/releases/wp-config.php; chown 33:33 $AP/releases/wp-config.php; CANF=none pcs Y3c-root-and-parent-config $X; info "Y3c (record only): $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/Y3c-root-and-parent-config.out 2>/dev/null | tail -1 | cut -c1-200) unlisted=$(jq -c '.cross_check.unlisted // empty' $D/Y3c-root-and-parent-config.out 2>/dev/null | tail -1 | cut -c1-200)"
+rm -f $H; mv $AP/releases/2 $H; rm -f $H/wp-config.php; rm -rf $AP/releases
 
 C=px-cur.test; run_ee c-$C site create $C --type=wp --public-dir=current --title=px $W; CA=$SITES_DIR/$C/app; CH=$CA/htdocs
 mkdir -p $CH/releases $CH/shared/uploads; mv $CH/current $CH/releases/175; ln -s releases/175 $CH/current; ln -s ../wp-config.php $CH/releases/wp-config.php; rm -rf $CH/releases/175/wp-content/uploads; ln -s ../../../shared/uploads $CH/releases/175/wp-content/uploads
