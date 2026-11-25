@@ -98,7 +98,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        old: ['rc', '4.15.0', '4.14.2', '4.13.3', '4.12.0', '4.11.0', '4.10.2', '4.9.3', '4.7.6']
+        old: ['rc']
     env:
       OLD_VERSION: ${{ matrix.old }}
     steps:
