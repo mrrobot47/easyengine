@@ -30,7 +30,7 @@ nonet)
   reload_scanner; pcs E-net-back $S; chk "E scan once the registry is back" 'ok false' "$ST $SAFE" ;;
 olddigest)
   pcs E-first $S; good=$(docker image inspect -f '{{.Id}}' $SC:v4.16.0)
-  [ -f /var/tmp/pcm-scanner.tar.gz ] || chk "E pinned scanner is the v4.16.0 r4 registry image (3e9adf50)" 'yes' "$(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0 | grep -q 3e9adf50281671af5fdf91c50e1defc6bf6688828d0ac94f403eaabde2d20c9b && echo yes || echo "no[$(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0)]")" info "E pinned image id $good digests $(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0)"
+  [ -f /var/tmp/pcm-scanner.tar.gz ] || chk "E pinned scanner is the v4.16.0 r5 registry image (3101273a)" 'yes' "$(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0 | grep -q 3101273ae081d58589848075773d255684b010a1c41fb7c6841e35ffcfbe0e24 && echo yes || echo "no[$(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0)]")" info "E pinned image id $good digests $(docker image inspect -f '{{join .RepoDigests " "}}' $SC:v4.16.0)"
   docker rmi $SC:v4.16.0 > /dev/null; docker pull -q $SC@sha256:2a315c56fa5642b96d18dc83e86f0d7850b0ed16ad7525463db349e74890c887 > $D/old-pull.txt 2>&1; info "E old digest pull: $(cat $D/old-pull.txt | tail -1)"
   docker tag $SC@sha256:2a315c56fa5642b96d18dc83e86f0d7850b0ed16ad7525463db349e74890c887 $SC:v4.16.0
   old=$(docker image inspect -f '{{.Id}}' $SC:v4.16.0); docker events --filter type=container --format '{{.Actor.Attributes.image}} {{.Action}} {{.ID}}' > $D/events.txt & EV=$!
