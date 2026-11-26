@@ -176,6 +176,17 @@ info "P20b fpm sees: $(cd $SITES_DIR/$PI && docker-compose exec -T php php -r 'e
 (cd $SITES_DIR/$PI && docker-compose exec -T --user=root php sh -c 'rm -f "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/zz-pcm-p20.ini' && docker-compose restart php) >> $D/P20b.log 2>&1; sleep 3; rm -rf $IH/x
 mkdir -p $IA/outside-dir; plant $IA/outside-dir/c.php; printf '<?php\necho "sub";\n' > $IA/outside-dir/index.php; printf 'auto_prepend_file=/var/www/outside-dir/c.php\n' > $IA/outside-dir/.user.ini; ln -s ../outside-dir $IH/sub; chown -R 33:33 $IA; chown -h 33:33 $IH/sub
 info "P21 http sub/: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $PI" http://127.0.0.1/sub/)"; neverpos P21-dir-link-out-with-user-ini-prepend $PI c.php; rm -f $IH/sub; rm -rf $IA/outside-dir
+# P23: a quoted section name with ] in it, then the prepend, on one line in .user.ini
+plant $IH/x/canary.php; printf '["a]b"] auto_prepend_file=/var/www/htdocs/x/canary.php\n' > $IH/.user.ini; chown -R 33:33 $IH
+info "P23 http: code $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $PI" http://127.0.0.1/) body [$(curl -s -H "Host: $PI" http://127.0.0.1/ | head -c 120 | tr '\n' ' ')] (hi = not prepended; 500/empty = the canary was prepended)"
+neverpos P23-user-ini-quoted-section-with-bracket $PI canary.php; rm -f $IH/.user.ini; rm -rf $IH/x
+# P24: htdocs/m is a user-compose mount of a host dir holding lnk -> /var/www/other; app/other/.user.ini prepends a canary
+mkdir -p /srv/pcm-p24/m; printf '<?php\necho "m";\n' > /srv/pcm-p24/m/index.php; ln -s /var/www/other /srv/pcm-p24/m/lnk; chown -R 33:33 /srv/pcm-p24; chown -h 33:33 /srv/pcm-p24/m/lnk
+mkdir -p $IA/other; plant $IA/other/c.php; printf '<?php\necho "other";\n' > $IA/other/index.php; printf 'auto_prepend_file=/var/www/other/c.php\n' > $IA/other/.user.ini; chown -R 33:33 $IA/other
+mkdir -p $SITES_DIR/$PI/user-docker-compose; printf 'services:\n  php:\n    volumes:\n      - /srv/pcm-p24/m:/var/www/htdocs/m\n' > $SITES_DIR/$PI/user-docker-compose/pcm.yml; run_ee en-$PI site enable $PI --force
+info "P24 php mounts: $(docker inspect -f '{{json .Mounts}}' $(cname $PI)-php-1 2>&1 | jq -c '[.[] | select(.Destination|startswith("/var/www")) | .Destination]' 2>&1) http m/lnk/: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $PI" http://127.0.0.1/m/lnk/)"
+neverpos P24-mounted-dir-link-to-app-dir-with-user-ini $PI c.php
+rm -rf $SITES_DIR/$PI/user-docker-compose $IA/other /srv/pcm-p24; run_ee en2-$PI site enable $PI --force
 # P22 = review fixture fx/r6: Deployer php site, every release has a .user.ini prepending its own boot.php; legacy code only in old release 2
 PD=pu-dep.test; run_ee c-$PD site create $PD --type=php --public-dir=current/public; DA=$(A $PD); DH=$DA/htdocs
 mkdir -p $DH/releases; mv $DH/current $DH/releases/3; ln -s releases/3 $DH/current; mkdir -p $DH/releases/3/public $DH/releases/2/public
