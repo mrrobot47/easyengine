@@ -79,5 +79,5 @@ pos NH4-cache-site-restored $NH "(stock pair restored)"
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
 info "U23 fixture sha256 $(sha256sum < $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc | cut -c1-16)"
 s0=$(date +%s); CANF=none pcs U23-phpcs-fixture-dqs $WS; w=$(( $(date +%s) - s0 )); t=$(ncl U23-phpcs-fixture-dqs | grep -cE 'DoubleQuotedStringTest\.inc.*(timeout|memory)|(timeout|memory).*DoubleQuotedStringTest\.inc')
-chk "U23 phpcs DoubleQuotedStringTest.inc fixture: not tool_error; positive, or can't confirm with a timeout/memory entry naming it" "ok true 0|ok null 1" "$ST $SAFE $t"; chk "U23 scan wall under 240 s" 1 "$(( w < 240 ))"; info "U23: ${w}s $(det U23-phpcs-fixture-dqs)"
+chk "U23 phpcs DoubleQuotedStringTest.inc fixture: not tool_error; positive, or can't confirm with a timeout/memory entry naming it" "ok true 0|ok null 1" "$ST $SAFE $t"; chk "U23 scan wall under 300 s (accepted, main 2026-11-26: up to two capped runs)" 1 "$(( w < 300 ))"; info "U23: ${w}s $(det U23-phpcs-fixture-dqs)"
 wreset; echo "DONE u0" >> $OUT/done.txt
