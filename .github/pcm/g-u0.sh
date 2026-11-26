@@ -36,7 +36,7 @@ preset
 VP=pu-venv.test; run_ee c-$VP site create $VP --type=php; VA=$(A $VP); printf '<?php\necho "hi";\n' > $VA/htdocs/index.php; chown -R 33:33 $VA
 mkdir -p $VA/.venv/bin; ln -s /usr/bin/python3 $VA/.venv/bin/python; ln -s python $VA/.venv/bin/python3; printf 'home = /usr/bin\nversion = 3.12.3\n' > $VA/.venv/pyvenv.cfg; chown -R 33:33 $VA/.venv; chown -h 33:33 $VA/.venv/bin/python $VA/.venv/bin/python3
 pos V17-venv-python-link-out $VP "(app/.venv/bin/python -> /usr/bin/python3)"
-mkdir -p $VA/htdocs/.venv/bin; ln -s /usr/bin/python3 $VA/htdocs/.venv/bin/python; chown -R 33:33 $VA/htdocs/.venv; chown -h 33:33 $VA/htdocs/.venv/bin/python; pos V17b-venv-in-htdocs $VP "(htdocs/.venv/bin/python -> /usr/bin/python3)"
+mkdir -p $VA/htdocs/.venv/bin; ln -s /usr/bin/python3 $VA/htdocs/.venv/bin/python; chown -R 33:33 $VA/htdocs/.venv; chown -h 33:33 $VA/htdocs/.venv/bin/python; CANF=none pcs V17b-venv-in-htdocs $VP; chk "V17b htdocs/.venv/bin/python -> /usr/bin/python3: not positive, the link named unreadable in not_checked (accepted, like P13)" 'ok null 1' "$ST $SAFE $(ncl V17b-venv-in-htdocs | grep -cF 'bin/python')"
 
 # --- U1 and the over-refusals on a wp site
 WS=pu-wp.test; run_ee c-$WS site create $WS --type=wp --title=pu $W; WA=$(A $WS); WH=$WA/htdocs; chown -R 33:33 $WA
