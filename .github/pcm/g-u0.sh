@@ -27,6 +27,9 @@ rec u0-cicd $P > /dev/null; pos U0-base-old-release-legacy $P "(legacy code only
 preset; rm -rf $R2/vendor; ln -s /var/www/htdocs/releases/1/vendor $R2/vendor; chown -h 33:33 $R2/vendor; info "U0a http: $(curl -s -H "Host: $P" http://127.0.0.1/ | head -c 80)"; neverpos U0a-live-vendor-abs-link-to-old-release $P autoload.php
 preset; ln -s ../1/h.php $R2/h.php; chown -h 33:33 $R2/h.php; neverpos U0b-live-file-link-to-old-release $P h.php
 preset; mkdir -p $PH/shared; ln -s ../releases/1/vendor $PH/shared/vendor; chown -R 33:33 $PH/shared; chown -h 33:33 $PH/shared/vendor; neverpos U0c-shared-vendor-link-to-old-release $P autoload.php
+# release pointers (#546 a1b8fb53): htdocs/previous -> releases/1 is a release pointer (shape a); htdocs/vendor -> releases/1/vendor is not
+preset; ln -s releases/1 $PH/previous; chown -h 33:33 $PH/previous; pos R1-previous-pointer-to-old-release $P "(legacy code only in releases/1)"; info "R1: $(det R1-previous-pointer-to-old-release)"
+preset; ln -s releases/1/vendor $PH/vendor; chown -h 33:33 $PH/vendor; neverpos R2-htdocs-vendor-link-into-old-release $P autoload.php
 preset
 
 # --- U1 and the over-refusals on a wp site
@@ -47,7 +50,8 @@ chmod 755 /tmp/pcm-w3tc.sh') > /dev/null 2>&1
 (cd $SITES_DIR/$WS && docker-compose exec -T -d --user=www-data php sh /tmp/pcm-w3tc.sh) > $D/O3-writer.log 2>&1; sleep 2; n0=$(find $WH/wp-content/cache/object -type f | wc -l)
 CANF=none pcs O3-w3tc-cache-written-during-scan $WS; n1=$(find $WH/wp-content/cache/object -type f | wc -l)
 (cd $SITES_DIR/$WS && docker-compose exec -T php touch /tmp/pcm-stop) > /dev/null 2>&1; sleep 1
-chk "O3 cache files were being written during the scan" 1 "$(( n1 > n0 ))"; chk "O3 W3TC cache written during the scan: positive" 'ok true \[\]' "$ST $SAFE $(ncl O3-w3tc-cache-written-during-scan)"; info "O3: files before scan $n0, after $n1; $(det O3-w3tc-cache-written-during-scan)"
+chk "O3 cache files were being written during the scan" 1 "$(( n1 > n0 ))"; o3u=$(jq -c '.cross_check.unlisted // []' $D/O3-w3tc-cache-written-during-scan.out 2>/dev/null | tail -1); o3n=$(ncl O3-w3tc-cache-written-during-scan)
+chk "O3 W3TC cache written during the scan: positive, or can't confirm only from the scanner's own not_checked (nothing unlisted)" 'ok true \[\] \[\]|ok null \[\] \[.+\]' "$ST $SAFE $o3u $o3n"; info "O3: files before scan $n0, after $n1; $(det O3-w3tc-cache-written-during-scan)"
 
 # O4: a plugin file replaced with legacy code right after the scan starts (best effort: a bulk plugin keeps the scan busy)
 wreset; mkdir -p $WH/wp-content/plugins/mmm-bulk; body=$(for i in $(seq 1 80); do echo "\$v$i = strtoupper( 'line $i' );"; done); for i in $(seq 1 3000); do printf '<?php\n// %d\n%s\n' $i "$body" > $WH/wp-content/plugins/mmm-bulk/f$i.php; done
@@ -60,6 +64,16 @@ for v in aaa zzz; do
   chk "O4-$v plugin file swapped to legacy code right after the scan started: never positive" 'tool_error null|ok null|ok false' "$ST $SAFE"; info "O4-$v: $ST safe=$SAFE canary=$CAN unlisted=$(jq -c '.cross_check.unlisted // empty' $D/O4-$v.out 2>/dev/null | tail -1 | cut -c1-200) not_checked=$(ncl O4-$v | cut -c1-200)"
 done
 rm -rf $WH/wp-content/plugins/mmm-bulk $WH/wp-content/plugins/aaa-swap $WH/wp-content/plugins/zzz-swap
+
+# NH (#546 a1b8fb53): EE --cache site, nginx-helper's bundled Predis exempt only as the stock released pair with phpredis loaded
+NH=pu-cache.test; run_ee c-$NH site create $NH --type=wp --cache --title=pu $W; NA=$(A $NH); NHD=$NA/htdocs/wp-content/plugins/nginx-helper
+info "NH nginx-helper: version=$(grep -m1 -i '^ *\* *Version:' $NHD/nginx-helper.php 2>/dev/null | tr -d ' *') predis sha256=$(sha256sum < $NHD/admin/predis.php 2>/dev/null | cut -c1-16) guard sha256=$(sha256sum < $NHD/includes/class-nginx-helper.php 2>/dev/null | cut -c1-16) redis ext=$(cd $SITES_DIR/$NH && docker-compose exec -T php php -r 'echo extension_loaded("redis") ? "yes" : "no";' 2>&1 | tail -1)"
+cp -a $NHD/admin/predis.php /var/tmp/pu-predis.php; cp -a $NHD/includes/class-nginx-helper.php /var/tmp/pu-guard.php
+pos NH1-cache-site-stock-nginx-helper $NH "(EE --cache site, stock nginx-helper)"; ig=$(jq -c '.ignored // empty' $D/NH1-cache-site-stock-nginx-helper.out 2>/dev/null | tail -1)
+chk "NH1 JSON ignored names admin/predis.php" 1 "$(echo "$ig" | grep -c 'nginx-helper/admin/predis.php')"; info "NH1: ignored=$ig table: $(cd /tmp && ee site php-compat $NH --php=8.4 < /dev/null 2>&1 | grep -i 'ignored' | head -1 | cut -c1-200)"
+printf ' ' >> $NHD/admin/predis.php; CANF=predis.php neverpos NH2-predis-modified $NH predis.php; info "NH2 ignored=$(jq -c '.ignored // empty' $D/NH2-predis-modified.out 2>/dev/null | tail -1)"; cp -a /var/tmp/pu-predis.php $NHD/admin/predis.php
+printf '\n// local change\n' >> $NHD/includes/class-nginx-helper.php; CANF=predis.php neverpos NH3-guard-modified $NH predis.php; info "NH3 ignored=$(jq -c '.ignored // empty' $D/NH3-guard-modified.out 2>/dev/null | tail -1)"; cp -a /var/tmp/pu-guard.php $NHD/includes/class-nginx-helper.php
+pos NH4-cache-site-restored $NH "(stock pair restored)"
 
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G

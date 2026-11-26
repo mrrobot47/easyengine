@@ -119,6 +119,7 @@ rm -rf /var/tmp/px-cur; mkdir -p /var/tmp/px-cur; cp -a $CA/. /var/tmp/px-cur/; 
 pos E0-cicd $C "(old release 174 beside live 175)"
 creset; info "P12 EE's own wp-cli.yml: [$(tr '\n' ' ' < $CH/wp-cli.yml)]"; pos P12-ee-public-dir-wpcli-yml $C "(EE's --public-dir wp-cli.yml, path: only)"
 plant $CH/releases/174/wp-content/plugins/pcm-old/pcm-e2.php; chown -R 33:33 $CH; CANF=pcm-e2.php pcs E2-old-release-legacy $C; chk "E2 legacy code only in an old release (not served): positive (exempt shape)" 'ok true' "$ST $SAFE"; info "E2: canary=$CAN not_checked=$(ncl E2-old-release-legacy | cut -c1-200)"
+ln -s releases/174 $CH/previous; chown -h 33:33 $CH/previous; CANF=pcm-e2.php pcs E2p-previous-pointer-wp $C; chk "E2p wp CI/CD, htdocs/previous -> releases/174 with legacy code there: positive (release pointer, shape a)" 'ok true' "$ST $SAFE"; info "E2p: canary=$CAN not_checked=$(ncl E2p-previous-pointer-wp | cut -c1-200) unlisted=$(jq -c '.cross_check.unlisted // empty' $D/E2p-previous-pointer-wp.out 2>/dev/null | tail -1 | cut -c1-200)"; rm -f $CH/previous
 cc() { creset; plant "$2"; chown -R 33:33 $CA; xc "$1" $C "$(basename "$2")" "$3"; }
 cc E3-stray-file-in-releases $CH/releases/pcm-e3.php pcm-e3
 cc E4-htdocs-root-beside-current $CH/pcm-e4.php pcm-e4
