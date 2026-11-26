@@ -122,12 +122,8 @@ nhneg() { CANF=predis.php pcs $1 $NH; chk "$1: not safe, the Predis exemption wi
 PR=$NA/htdocs/wp-content/plugins/pcm-cache-tools; mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\nfunction pcm_cache_client() {\n\treturn class_exists( "Predis\\\\Client" ) ? "predis" : "phpredis";\n}\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8-other-plugin-mentions-predis; rm -rf $PR
 mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\n// Purges through Nginx-Helper when it is active.\nfunction pcm_purge() { do_action( "rt_nginx_helper_purge_all" ); }\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8b-other-plugin-mentions-nginx-helper; rm -rf $PR
 ln $NHD/nginx-helper.php /var/tmp/pcm-nh-hardlink; info "NH9 nlink $(stat -c %h $NHD/nginx-helper.php) (other name outside app/)"; nhneg NH9-nginx-helper-file-hardlinked; rm -f /var/tmp/pcm-nh-hardlink
-# NH10: redis in the CLI but not in php-fpm -m (simulated: a php-fpm wrapper that hides redis from -m only; the container is recreated by NH11)
-FPM=$(cd $SITES_DIR/$NH && docker-compose exec -T php sh -c 'command -v php-fpm' 2>/dev/null | tr -d '\r'); info "NH10 php-fpm at [$FPM]"
-if [ -n "$FPM" ] && (cd $SITES_DIR/$NH && docker-compose exec -T --user=root php sh -c "mv $FPM $FPM.real && printf '#!/bin/sh\nif [ \"\$1\" = -m ]; then $FPM.real -m | grep -vix redis; else exec $FPM.real \"\$@\"; fi\n' > $FPM && chmod 755 $FPM") > $D/NH10-wrap.log 2>&1; then
-  info "NH10 cli redis=$(cd $SITES_DIR/$NH && docker-compose exec -T php php -r 'echo extension_loaded("redis") ? "yes" : "no";' 2>&1 | tail -1) fpm -m redis=$(cd $SITES_DIR/$NH && docker-compose exec -T php sh -c 'php-fpm -m' 2>&1 | grep -cix redis)"
-  nhneg NH10-redis-missing-from-php-fpm; (cd $SITES_DIR/$NH && docker-compose exec -T --user=root php sh -c "mv $FPM.real $FPM") >> $D/NH10-wrap.log 2>&1
-else info "NH10: N/A, could not wrap php-fpm in the container ($(tail -2 $D/NH10-wrap.log 2>/dev/null | tr '\n' ' '))"; fi
+# NH10: N/A (main 2026-11-26): the probe reads redis.so from the fpm master's /proc/1/maps; removing it needs an image rebuild. The redis-absent row is the #546 owner's IT.
+info "NH10: N/A, the Predis probe reads redis.so in the php-fpm master's /proc/1/maps; taking it out needs a rebuilt image (redis-absent row covered by the #546 IT)"
 # NH11: an accepted extra mount (a clean plugin dir from the host via user-docker-compose)
 mkdir -p /srv/pcm-nh/plug; printf '<?php\n/*\nPlugin Name: PCM Mounted\n*/\nfunction pcm_m() { return 1; }\n' > /srv/pcm-nh/plug/pcm-mounted.php; chown -R 33:33 /srv/pcm-nh; mkdir -p $SITES_DIR/$NH/user-docker-compose
 printf 'services:\n  php:\n    volumes:\n      - /srv/pcm-nh/plug:/var/www/htdocs/wp-content/plugins/mounted-plug:ro\n' > $SITES_DIR/$NH/user-docker-compose/pcm.yml; run_ee en-$NH site enable $NH --force
@@ -149,7 +145,7 @@ TT=$NA/htdocs/wp-content/themes/t; mkdir -p $TT; printf '/*\nTheme Name: T\n*/\n
 # NH15: php-fpm configuration changed after the master started (an ini touched in the container's conf.d); the extra -d flag needs a changed command line: N/A
 info "NH15 -d variant: N/A, starting the fpm master with an extra -d needs a different container command (a user compose override, refused on its own)"
 nroot 'touch "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/*.ini' > $D/NH15-touch.log 2>&1; info "NH15 ini mtimes after the master: $(nroot 'ls -l --time-style=+%s "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/ | tail -3' 2>&1 | tr '\n' ' ' | cut -c1-250) master start $(nroot 'stat -c %Y /proc/1' 2>&1 | tail -1)"
-nhneg NH15-ini-touched-after-fpm-master; (cd $SITES_DIR/$NH && docker-compose restart php) > $D/NH15-restart.log 2>&1; sleep 3; pos NH15r-after-php-restart $NH "(fpm master restarted after the touch)"
+pos NH15-ini-touched-after-fpm-master $NH "(positive: the config-time probe was dropped, covered by the R-PREDIS-TARGET residual, main 2026-11-26)"; (cd $SITES_DIR/$NH && docker-compose restart php) > $D/NH15-restart.log 2>&1; sleep 3; pos NH15r-after-php-restart $NH "(fpm master restarted after the touch)"
 
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
