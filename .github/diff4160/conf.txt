@@ -1,20 +1,36 @@
-CORE_REPO mrrobot47/easyengine
-CORE_SHA 6943554ca97ebe40573a4a4e84d95957f387e023
-PKG site-command mrrobot47/site-command 9dece016eabd5851cd98546b3418d60672ac4560
+CORE_REPO EasyEngine/easyengine
+CORE_SHA a0cb86e7154600069de768a4e310947d712052bd
+RUN wp stable
+RUN wp stable2
 RUN wp rc
 RUN wp upgrade
+RUN phphtml stable
+RUN phphtml stable2
 RUN phphtml rc
 RUN phphtml upgrade
+RUN newphp stable
+RUN newphp stable2
 RUN newphp rc
 RUN newphp upgrade
+RUN edge stable
+RUN edge stable2
 RUN edge rc
 RUN edge upgrade
+RUN oldphp stable
+RUN oldphp stable2
 RUN oldphp rc
 RUN oldphp upgrade
+RUN globals stable
+RUN globals stable2
 RUN globals rc
 RUN globals upgrade
+RUN ssl stable
+RUN ssl stable2
 RUN ssl rc
 RUN ssl upgrade
+RUN nr85 stable
+RUN nr85 stable2
 RUN nr85 rc
 RUN nr85 upgrade
+RUN sidmig from4133-stable
 RUN sidmig from4133-rc

@@ -35,4 +35,15 @@ fi
 cmds
 snap final
 cp -a /opt/easyengine/logs/ee.log* $OUT/ 2>/dev/null
+# Release images must be the pinned digests at the end too: the migration's tag pull goes through the mirror and can re-point a tag.
+if [ -n "${TARGET:-}" ] && [ "$TARGET" = "$RC_PHAR" ] || [ "$SIDE" = rc ]; then
+  rd() { docker image inspect -f '{{join .RepoDigests " "}}' "$1" 2>/dev/null; }
+  while read -r it d; do i=${it%%:*}; if docker image inspect "$it" > /dev/null 2>&1; then
+      rd "$it" | grep -qwF "$i@$d" && echo "PASS tag $it $d" || echo "FAIL tag $it [$(rd "$it")]"; else echo "ABSENT $it"; fi
+    for c in $(docker ps -aq); do [ "$(docker inspect -f '{{.Config.Image}}' $c)" = "$it" ] || continue; n=$(docker inspect -f '{{.Name}}' $c)
+      rd "$(docker inspect -f '{{.Image}}' $c)" | grep -qwF "$i@$d" && echo "PASS ctr ${n#/} $it" || echo "FAIL ctr ${n#/} $it [$(rd "$(docker inspect -f '{{.Image}}' $c)")]"; done
+  done < $F/digests.txt > $OUT/digest-assert.txt
+  grep -c ^PASS $OUT/digest-assert.txt; grep -hE '^(FAIL|ABSENT)|PREPULL-FAIL' $OUT/digest-assert.txt $OUT/prepull.txt 2>/dev/null
+  grep -qhE '^FAIL|PREPULL-FAIL' $OUT/digest-assert.txt $OUT/prepull.txt 2>/dev/null && { echo "DIGEST ASSERT FAILED $SHARD $SIDE"; exit 3; }
+fi
 echo "DONE $SHARD $SIDE"
