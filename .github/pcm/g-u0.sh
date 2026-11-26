@@ -32,6 +32,12 @@ preset; ln -s releases/1 $PH/previous; chown -h 33:33 $PH/previous; pos R1-previ
 preset; ln -s releases/1/vendor $PH/vendor; chown -h 33:33 $PH/vendor; neverpos R2-htdocs-vendor-link-into-old-release $P autoload.php
 preset
 
+# V17 (#546 0f0081c1): a php site with a Python venv whose interpreter links out of the site's files (not code): positive
+VP=pu-venv.test; run_ee c-$VP site create $VP --type=php; VA=$(A $VP); printf '<?php\necho "hi";\n' > $VA/htdocs/index.php; chown -R 33:33 $VA
+mkdir -p $VA/.venv/bin; ln -s /usr/bin/python3 $VA/.venv/bin/python; ln -s python $VA/.venv/bin/python3; printf 'home = /usr/bin\nversion = 3.12.3\n' > $VA/.venv/pyvenv.cfg; chown -R 33:33 $VA/.venv; chown -h 33:33 $VA/.venv/bin/python $VA/.venv/bin/python3
+pos V17-venv-python-link-out $VP "(app/.venv/bin/python -> /usr/bin/python3)"
+mkdir -p $VA/htdocs/.venv/bin; ln -s /usr/bin/python3 $VA/htdocs/.venv/bin/python; chown -R 33:33 $VA/htdocs/.venv; chown -h 33:33 $VA/htdocs/.venv/bin/python; pos V17b-venv-in-htdocs $VP "(htdocs/.venv/bin/python -> /usr/bin/python3)"
+
 # --- U1 and the over-refusals on a wp site
 WS=pu-wp.test; run_ee c-$WS site create $WS --type=wp --title=pu $W; WA=$(A $WS); WH=$WA/htdocs; chown -R 33:33 $WA
 rm -rf /var/tmp/pu-wp; mkdir -p /var/tmp/pu-wp; cp -a $WA/. /var/tmp/pu-wp/; wreset() { rsync -a --delete /var/tmp/pu-wp/ $WA/; chown -R 33:33 $WA; }
@@ -65,6 +71,21 @@ for v in aaa zzz; do
 done
 rm -rf $WH/wp-content/plugins/mmm-bulk $WH/wp-content/plugins/aaa-swap $WH/wp-content/plugins/zzz-swap
 
+# RW (#546 0f0081c1): app/.wp-cli -> releases/1 beside htdocs -> releases/2; WP-CLI loads ~/.wp-cli/packages/vendor/autoload.php from the old release: never positive
+wreset; mkdir -p $WA/releases; mv $WH $WA/releases/2; ln -s releases/2 $WH; cp -a $WA/wp-config.php $WA/releases/2/wp-config.php; mkdir -p $WA/releases/1/packages/vendor; plant $WA/releases/1/packages/vendor/autoload.php
+rm -rf $WA/.wp-cli; ln -s releases/1 $WA/.wp-cli; chown -R 33:33 $WA; chown -h 33:33 $WH $WA/.wp-cli; info "RW layout: app=[$(ls -A $WA | tr '\n' ' ')] .wp-cli -> $(readlink $WA/.wp-cli) htdocs -> $(readlink $WH)"
+neverpos RW1-wpcli-home-link-to-old-release $WS autoload.php
+rm -f $WH $WA/.wp-cli; mv $WA/releases/2 $WH; rm -f $WH/wp-config.php; rm -rf $WA/releases; wreset
+
+# WF (#546 0f0081c1): Wordfence wflogs data files rewritten in place during the scan: positive (data-only)
+wreset; WFL=$WH/wp-content/wflogs; mkdir -p $WFL $WH/wp-content/plugins/wordfence; printf '<?php\n/*\nPlugin Name: Wordfence Security\nVersion: 8.0.5\n*/\n' > $WH/wp-content/plugins/wordfence/wordfence.php
+wfw() { printf "<?php exit('Access denied'); __halt_compiler(); ?>\n******************************************************************\nThis file is used by the Wordfence Web Application Firewall. Read\nmore at https://docs.wordfence.com/en/Web_Application_Firewall_FAQ\n******************************************************************\na:1:{s:4:\"tick\";i:%s;}" "$2" > "$1"; }
+for f in attack-data config config-livewaf config-synced config-transient ips rules; do wfw $WFL/$f.php 0; done; chown -R 33:33 $WH/wp-content
+( i=0; while [ ! -e /var/tmp/pu-wf-stop ]; do i=$((i+1)); for f in attack-data config config-livewaf config-synced config-transient ips rules; do wfw $WFL/$f.php $i; done; sleep 0.2; done ) & WFP=$!; rm -f /var/tmp/pu-wf-stop
+c0=$(stat -c %Z $WFL/config.php); CANF=none pcs WF1-wordfence-wflogs-rewritten-during-scan $WS; c1=$(stat -c %Z $WFL/config.php); touch /var/tmp/pu-wf-stop; wait $WFP; rm -f /var/tmp/pu-wf-stop
+chk "WF1 wflogs rewritten during the scan" 1 "$(( c1 > c0 ))"; chk "WF1 Wordfence wflogs rewritten in place during the scan: positive" 'ok true \[\]' "$ST $SAFE $(ncl WF1-wordfence-wflogs-rewritten-during-scan)"; info "WF1: $(det WF1-wordfence-wflogs-rewritten-during-scan)"
+wreset
+
 # NH (#546 a1b8fb53): EE --cache site, nginx-helper's bundled Predis exempt only as the stock released pair with phpredis loaded
 NH=pu-cache.test; run_ee c-$NH site create $NH --type=wp --cache --title=pu $W; NA=$(A $NH); NHD=$NA/htdocs/wp-content/plugins/nginx-helper
 info "NH nginx-helper: version=$(grep -m1 -i '^ *\* *Version:' $NHD/nginx-helper.php 2>/dev/null | tr -d ' *') predis sha256=$(sha256sum < $NHD/admin/predis.php 2>/dev/null | cut -c1-16) guard sha256=$(sha256sum < $NHD/includes/class-nginx-helper.php 2>/dev/null | cut -c1-16) redis ext=$(cd $SITES_DIR/$NH && docker-compose exec -T php php -r 'echo extension_loaded("redis") ? "yes" : "no";' 2>&1 | tail -1)"
@@ -74,6 +95,9 @@ chk "NH1 JSON ignored names admin/predis.php" 1 "$(echo "$ig" | grep -c 'nginx-h
 printf ' ' >> $NHD/admin/predis.php; CANF=predis.php neverpos NH2-predis-modified $NH predis.php; info "NH2 ignored=$(jq -c '.ignored // empty' $D/NH2-predis-modified.out 2>/dev/null | tail -1)"; cp -a /var/tmp/pu-predis.php $NHD/admin/predis.php
 printf '\n// local change\n' >> $NHD/includes/class-nginx-helper.php; CANF=predis.php neverpos NH3-guard-modified $NH predis.php; info "NH3 ignored=$(jq -c '.ignored // empty' $D/NH3-guard-modified.out 2>/dev/null | tail -1)"; cp -a /var/tmp/pu-guard.php $NHD/includes/class-nginx-helper.php
 pos NH4-cache-site-restored $NH "(stock pair restored)"
+for pp in aaa-pred zzz-pred; do PP=$NA/htdocs/wp-content/plugins/$pp; mkdir -p $PP; printf "<?php\n/*\nPlugin Name: PCM %s\n*/\nif ( ! class_exists( 'Predis\\\\Client' ) ) {\n\trequire __DIR__ . '/predis.php';\n}\n" $pp > $PP/$pp.php; ln $NHD/admin/predis.php $PP/predis.php; chown -R 33:33 $PP
+  info "NH5-$pp: hard link inode $(stat -c %i $PP/predis.php) = $(stat -c %i $NHD/admin/predis.php), links $(stat -c %h $PP/predis.php)"; CANF=predis.php neverpos NH5-$pp-hardlinked-predis-required $NH predis.php; info "NH5-$pp ignored=$(jq -c '.ignored // empty' $D/NH5-$pp-hardlinked-predis-required.out 2>/dev/null | tail -1)"; rm -rf $PP; done
+pos NH6-cache-site-after-hardlink-cells $NH "(stock pair, no other plugin)"
 
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
