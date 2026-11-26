@@ -5,6 +5,9 @@
 # Usage: repro.sh create|ops-old|upgrade|scan|ops-new|layouts
 . "$(dirname "$0")/lib.sh"; P=$1; D=$OUT/repro/$P; mkdir -p $D; cd /tmp
 P1=pc-cur.test; P2=pc-nest.test; P3=pc-space.test; PD=pc-def.test
+# --cache site created by an old EE (4.7.6 and 4.13.3 legs only, main 2026-11-26): the Predis exemption must survive the upgrade
+PC=pc-cache.test; cache_leg() { case "${OLD_VERSION:-}" in 4.7.6|4.13.3) return 0 ;; esac; return 1; }
+php_cid() { docker ps -q --filter "label=com.docker.compose.project=$(cname $1)" --filter label=com.docker.compose.service=php | head -1; }
 # canary location from the DB path (the WordPress directory the site record names) and, failing that, the first wp-content found.
 canary_into() { local s=$1 rel wc; rel=$(db "select site_container_fs_path from sites where site_url='$s'" | sed 's#^/var/www/##')
   wc=$SITES_DIR/$s/app/$rel/wp-content; [ -d "$wc" ] || wc=$(find -L $SITES_DIR/$s/app/htdocs -maxdepth 4 -type d -name wp-content | head -1)
@@ -35,6 +38,7 @@ create)
   run_ee create-$P3 site create $P3 --type=wp --public-dir current --title=pc $W
   run_ee create-$PD site create $PD --type=wp --title=pc $W
   for s in $P1 $P2 $P3 $PD; do v=$(rec create $s); info "created $s db=$v"; canary_into $s; done
+  if cache_leg; then run_ee create-$PC site create $PC --type=wp --cache --title=pc $W; info "cache leg $OLD_VERSION: $PC create rc $RC; nginx-helper $(grep -m1 -i '^ *\* *Version:' $SITES_DIR/$PC/app/htdocs/wp-content/plugins/nginx-helper/nginx-helper.php 2>/dev/null | sed 's/.*: *//')"; fi
   chk "create: $P1 DB site_container_fs_path" '/var/www/htdocs/current' "$(rec x $P1 2>/dev/null)"
   chk "create: $P2 DB site_container_fs_path" '/var/www/htdocs/current/public' "$(rec x $P2 2>/dev/null)"
   info "create: $P3 (--public-dir current, space form) DB path $(rec x $P3 2>/dev/null); create rc $(tail -1 $D/create-$P3.out)" ;;
@@ -45,6 +49,9 @@ upgrade)
   for s in $P1 $P2 $P3 $PD; do rec upgraded $s > /dev/null; done
   chk "upgrade: $P1 DB site_container_fs_path" '/var/www/htdocs/current' "$(rec x $P1 2>/dev/null)" ;;
 scan)
+  if cache_leg; then c=$(php_cid $PC); info "cache leg $OLD_VERSION: $PC php container $c mounts under /var/www: $(docker inspect -f '{{json .Mounts}}' $c 2>/dev/null | jq -c '[.[] | select(.Destination|startswith("/var/www")) | .Destination]') mountinfo: $(docker exec $c sh -c "awk '\$5 ~ /^\/var\/www/ {print \$5}' /proc/1/mountinfo" 2>&1 | tr '\n' ' ') image $(docker inspect -f '{{.Config.Image}}' $c 2>/dev/null)"
+    CANF=none pcs scan-$PC $PC; chk "cache leg $OLD_VERSION: $PC created by EE $OLD_VERSION, upgraded: positive with the Predis exemption" 'ok true \[\]' "$ST $SAFE $(jq -c '.not_checked // [] | map(tostring)' $D/scan-$PC.report.json 2>/dev/null)"
+    chk "cache leg $OLD_VERSION: ignored names nginx-helper/admin/predis.php" 1 "$(jq -c '.ignored // empty' $D/scan-$PC.out 2>/dev/null | tail -1 | grep -c 'nginx-helper/admin/predis.php')"; info "cache leg $OLD_VERSION: $ST safe=$SAFE errors=$ERRS ignored=$(jq -c '.ignored // empty' $D/scan-$PC.out 2>/dev/null | tail -1 | cut -c1-200) detail=$(jq -r '.detail // empty' $D/scan-$PC.out 2>/dev/null | tail -1 | cut -c1-200)"; fi
   expect_found scan-$P1 $P1 '/var/www/htdocs/current'
   expect_found scan-$P2 $P2 '/var/www/htdocs/current/public'
   info "scan-$P3: N/A, '--public-dir current' (space form) is refused at create"
