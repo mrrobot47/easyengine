@@ -23,13 +23,13 @@ defaults:
 
 env:
   CORE_REPO: mrrobot47/easyengine
-  CORE_SHA: 6943554ca97ebe40573a4a4e84d95957f387e023
+  CORE_SHA: a0cb86e7154600069de768a4e310947d712052bd
   RELEASE_VERSION: '4.16.0'
-  EXPECT_REFS: 'easyengine/admin-tools-command=edceb582ea0c0009356ba25801cefadaab3e39ae easyengine/auth-command=2bec5539c7e17391f2d7ad8b33a3eaf20dc84dde easyengine/config-command=49bb3c76b683edc0e1935b8ca49fea4a1bccbc64 easyengine/cron-command=aaa84821a99ff28169b3680184a973808cb5fa4b easyengine/dash-command=fd35bd29e48b9af28db8811bd7a974d8c0709c56 easyengine/log-command=9840481de643e853259694291d6f4c61a7ca23b1 easyengine/mailhog-command=1dee0473dfb7011a15af7dae549794d7ab9e2946 easyengine/service-command=93d4266c7ee39b82f6c599673352d6ba2f639c33 easyengine/shell-command=e16751f54ae98ac2d43d54add02fa8befd568f9c easyengine/site-command=9dece016eabd5851cd98546b3418d60672ac4560 easyengine/site-type-php=6230b69845d4aaa1eb7223df642a1c7455787c48 easyengine/site-type-wp=f3e11abee37839a52a158f7dfc9f88a62cd8f791'
+  EXPECT_REFS: 'easyengine/admin-tools-command=edceb582ea0c0009356ba25801cefadaab3e39ae easyengine/auth-command=2bec5539c7e17391f2d7ad8b33a3eaf20dc84dde easyengine/config-command=49bb3c76b683edc0e1935b8ca49fea4a1bccbc64 easyengine/cron-command=aaa84821a99ff28169b3680184a973808cb5fa4b easyengine/dash-command=fd35bd29e48b9af28db8811bd7a974d8c0709c56 easyengine/log-command=9840481de643e853259694291d6f4c61a7ca23b1 easyengine/mailhog-command=1dee0473dfb7011a15af7dae549794d7ab9e2946 easyengine/service-command=93d4266c7ee39b82f6c599673352d6ba2f639c33 easyengine/shell-command=e16751f54ae98ac2d43d54add02fa8befd568f9c easyengine/site-command=f966c0ae5d82959002bb2679646463d3e9cf2568 easyengine/site-type-php=6230b69845d4aaa1eb7223df642a1c7455787c48 easyengine/site-type-wp=f3e11abee37839a52a158f7dfc9f88a62cd8f791'
   EXPECT_IMG: 'compat-scanner=v4.16.0 cron=v4.16.0 newrelic-daemon=v4.16.0 php8.1=v4.16.0 php8.2=v4.16.0 php8.3=v4.16.0 php8.4=v4.16.0 php8.5=v4.16.0 php8.6=v4.15.0 nginx-proxy=v4.14.1 nginx=v4.14.0 postfix=v4.14.0 redis=v4.14.0 mariadb=v4.9.1 mailhog=v4.6.5'
   # Interim runs only: build with a package at a commit the core lock doesn't pin (<pkg>=<owner/repo>@<sha>; empty = the lock as committed).
   # Rewrites that package's composer.lock source/dist to the commit before `composer install`; the version label stays the lock's.
-  PKG_OVERRIDE: 'easyengine/site-command=mrrobot47/site-command@9dece016eabd5851cd98546b3418d60672ac4560'
+  PKG_OVERRIDE: ''
   PHP_EXPECT: '8.1=8.1.34 8.2=8.2.36 8.3=8.3.37 8.4=8.4.28 8.5=8.5.13 8.6=8.6.0'
   SCRIPTS: .github/ext4160
   COMPOSE_INTERACTIVE_NO_CLI: 1
