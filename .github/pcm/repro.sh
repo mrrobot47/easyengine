@@ -135,6 +135,9 @@ variants)
   i=0; for pd in 'current/' '/current' '/var/www/htdocs/abs' 'web.app' 'a//b' 'deep/er/still/x' '--BARE--'; do i=$((i+1)); s=pv$i.test
     if [ "$pd" = --BARE-- ]; then run_ee cv-$i site create $s --type=wp --public-dir --title=pc $W; else run_ee cv-$i site create $s --type=wp "--public-dir=$pd" --title=pc $W; fi
     v=$(rec "variant[$pd]" $s); info "variant --public-dir=[$pd]: create rc $RC, stored [$v]"
-    [ -n "$v" ] || continue; rel=${v#/var/www/}; plant "$SITES_DIR/$s/app/$rel/wp-content/plugins/pcm-canary/pcm-canary.php"; expect_found variant-$i $s "$(echo $v | tr -s /)"; done ;;
+    [ -n "$v" ] || continue; rel=${v#/var/www/}; plant "$SITES_DIR/$s/app/$rel/wp-content/plugins/pcm-canary/pcm-canary.php"
+    # a//b: EE's own `path: a//b/` is refused again (#546 after 4094706c, main 2026-11-26): an accepted over-refusal, never positive
+    if [ "$pd" = 'a//b' ]; then pcs variant-$i $s; chk "variant-$i: $s --public-dir=a//b refused (accepted over-refusal): no verdict, names wp-cli.yml" '(tool_error|ok) null 1' "$ST $SAFE $( { jq -r '.detail // empty' $D/variant-$i.out; jq -c '.cross_check.unlisted // empty' $D/variant-$i.out; } 2>/dev/null | grep -cF wp-cli.yml | awk '{print ($1>0)}')"; info "variant-$i: $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/variant-$i.out 2>/dev/null | tail -1 | cut -c1-200)"
+    else expect_found variant-$i $s "$(echo $v | tr -s /)"; fi; done ;;
 esac
 echo "DONE repro-$P" >> $OUT/done.txt

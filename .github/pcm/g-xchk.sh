@@ -122,6 +122,8 @@ creset; info "P12 EE's own wp-cli.yml: [$(tr '\n' ' ' < $CH/wp-cli.yml)]"; pos P
 # WP-CLI exact shapes (#546 0f0081c1): only EE's own `path: current/` form is accepted
 wy() { creset; printf "$2" > $CH/wp-cli.yml; chown 33:33 $CH/wp-cli.yml; CANF=none pcs $1 $C; chk "$1: refused (tool_error naming wp-cli.yml)" 'tool_error null 1' "$ST $SAFE $(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | grep -cF wp-cli.yml)"; info "$1: $ST safe=$SAFE detail=$(jq -r '.detail // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-200)"; }
 wy W1-wpcli-yml-quoted-path 'path: "current/"\n'; wy W1b-wpcli-yml-single-quoted-path "path: 'current/'\n"; wy W2-wpcli-yml-anchor-alias 'x: &p current/\npath: *p\n'
+# bare YAML scalars as path: (#546 after 4094706c): refused
+i=0; for v in yes '~' true On NO n FALSE off null Y; do i=$((i+1)); wy W3-$i-wpcli-yml-bare-path-$(echo "$v" | tr -c 'A-Za-z0-9\n' 'x') "path: $v\n"; done
 creset
 plant $CH/releases/174/wp-content/plugins/pcm-old/pcm-e2.php; chown -R 33:33 $CH; CANF=pcm-e2.php pcs E2-old-release-legacy $C; chk "E2 legacy code only in an old release (not served): positive (exempt shape)" 'ok true' "$ST $SAFE"; info "E2: canary=$CAN not_checked=$(ncl E2-old-release-legacy | cut -c1-200)"
 ln -s releases/174 $CH/previous; chown -h 33:33 $CH/previous; CANF=pcm-e2.php pcs E2p-previous-pointer-wp $C; chk "E2p wp CI/CD, htdocs/previous -> releases/174 with legacy code there: positive (release pointer, shape a)" 'ok true' "$ST $SAFE"; info "E2p: canary=$CAN not_checked=$(ncl E2p-previous-pointer-wp | cut -c1-200) unlisted=$(jq -c '.cross_check.unlisted // empty' $D/E2p-previous-pointer-wp.out 2>/dev/null | tail -1 | cut -c1-200)"; rm -f $CH/previous

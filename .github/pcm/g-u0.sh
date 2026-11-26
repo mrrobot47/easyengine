@@ -30,12 +30,21 @@ preset; mkdir -p $PH/shared; ln -s ../releases/1/vendor $PH/shared/vendor; chown
 # release pointers (#546 a1b8fb53): htdocs/previous -> releases/1 is a release pointer (shape a); htdocs/vendor -> releases/1/vendor is not
 preset; ln -s releases/1 $PH/previous; chown -h 33:33 $PH/previous; pos R1-previous-pointer-to-old-release $P "(legacy code only in releases/1)"; info "R1: $(det R1-previous-pointer-to-old-release)"
 preset; ln -s releases/1/vendor $PH/vendor; chown -h 33:33 $PH/vendor; neverpos R2-htdocs-vendor-link-into-old-release $P autoload.php
+# shape (a) only through a `current` link beside releases/ (#546 after 4094706c): releases moved under htdocs/sub with current -> sub/releases/2
+preset; mkdir -p $PH/sub; mv $PH/releases $PH/sub/releases; rm -f $PH/current; ln -s sub/releases/2 $PH/current; chown -h 33:33 $PH/current; chown -R 33:33 $PH/sub
+info "R3 layout: current -> $(readlink $PH/current), htdocs=[$(ls -A $PH | tr '\n' ' ')]"; neverpos R3-current-not-beside-releases $P autoload.php
+preset
+# the served link under another name: php site --public-dir=live/public, live -> releases/2, legacy code only in releases/1
+LP=pu-live.test; run_ee c-$LP site create $LP --type=php --public-dir=live/public; LA=$(A $LP); LH=$LA/htdocs; rec u0-live $LP > /dev/null
+mkdir -p $LH/releases $LH/live/public; mv $LH/live $LH/releases/2; ln -s releases/2 $LH/live; mkdir -p $LH/releases/1/vendor $LH/releases/2/vendor; plant $LH/releases/1/vendor/autoload.php
+printf '<?php\nreturn true;\n' > $LH/releases/2/vendor/autoload.php; printf '<?php\nrequire __DIR__ . "/../vendor/autoload.php";\necho "live";\n' > $LH/releases/2/public/index.php; chown -R 33:33 $LA; chown -h 33:33 $LH/live
+rec u0-live-cicd $LP > /dev/null; neverpos R4-served-link-named-live $LP autoload.php
 preset
 
 # V17 (#546 0f0081c1): a php site with a Python venv whose interpreter links out of the site's files (not code): positive
 VP=pu-venv.test; run_ee c-$VP site create $VP --type=php; VA=$(A $VP); printf '<?php\necho "hi";\n' > $VA/htdocs/index.php; chown -R 33:33 $VA
 mkdir -p $VA/.venv/bin; ln -s /usr/bin/python3 $VA/.venv/bin/python; ln -s python $VA/.venv/bin/python3; printf 'home = /usr/bin\nversion = 3.12.3\n' > $VA/.venv/pyvenv.cfg; chown -R 33:33 $VA/.venv; chown -h 33:33 $VA/.venv/bin/python $VA/.venv/bin/python3
-pos V17-venv-python-link-out $VP "(app/.venv/bin/python -> /usr/bin/python3)"
+CANF=none pcs V17-venv-python-link-out $VP; chk "V17 app/.venv/bin/python -> /usr/bin/python3: can't confirm, the link named (acceptance dropped, main 2026-11-26)" 'ok null 1' "$ST $SAFE $( { ncl V17-venv-python-link-out; jq -c '.cross_check.unlisted // empty' $D/V17-venv-python-link-out.out | tail -1; } 2>/dev/null | grep -cF '.venv/bin/python' | awk '{print ($1>0)}')"; info "V17: $(det V17-venv-python-link-out)"
 mkdir -p $VA/htdocs/.venv/bin; ln -s /usr/bin/python3 $VA/htdocs/.venv/bin/python; chown -R 33:33 $VA/htdocs/.venv; chown -h 33:33 $VA/htdocs/.venv/bin/python; CANF=none pcs V17b-venv-in-htdocs $VP; chk "V17b htdocs/.venv/bin/python -> /usr/bin/python3: not positive, the link named unreadable in not_checked (accepted, like P13)" 'ok null 1' "$ST $SAFE $(ncl V17b-venv-in-htdocs | grep -cF 'bin/python')"
 
 # --- U1 and the over-refusals on a wp site
@@ -98,6 +107,27 @@ pos NH4-cache-site-restored $NH "(stock pair restored)"
 for pp in aaa-pred zzz-pred; do PP=$NA/htdocs/wp-content/plugins/$pp; mkdir -p $PP; printf "<?php\n/*\nPlugin Name: PCM %s\n*/\nif ( ! class_exists( 'Predis\\\\Client' ) ) {\n\trequire __DIR__ . '/predis.php';\n}\n" $pp > $PP/$pp.php; ln $NHD/admin/predis.php $PP/predis.php; chown -R 33:33 $PP
   info "NH5-$pp: hard link inode $(stat -c %i $PP/predis.php) = $(stat -c %i $NHD/admin/predis.php), links $(stat -c %h $PP/predis.php)"; CANF=predis.php neverpos NH5-$pp-hardlinked-predis-required $NH predis.php; info "NH5-$pp ignored=$(jq -c '.ignored // empty' $D/NH5-$pp-hardlinked-predis-required.out 2>/dev/null | tail -1)"; rm -rf $PP; done
 pos NH6-cache-site-after-hardlink-cells $NH "(stock pair, no other plugin)"
+# NH7+ (#546 after 4094706c): the exemption needs exact releases 2.2.x-2.4.1, nlink 1, no other code naming predis/nginx-helper, redis in CLI and php-fpm -m, no extra mounts
+nhv=$(grep -m1 -i '^ *\* *Version:' $NHD/nginx-helper.php | sed 's/.*: *//' | tr -d ' \r'); info "NH7 EE-installed nginx-helper $nhv"
+for v in 2.2.0 2.2.5 2.3.0 2.3.5 2.4.0 2.4.1; do (cd $SITES_DIR/$NH && docker-compose exec -T --user=www-data php sh -c "wp plugin install nginx-helper --version=$v --force") > $D/NH7-$v-install.log 2>&1
+  got=$(grep -m1 -i '^ *\* *Version:' $NHD/nginx-helper.php | sed 's/.*: *//' | tr -d ' \r'); pos NH7-release-$v $NH "(nginx-helper $got, scoped OK)"
+  info "NH7-$v: installed=$got predis=$([ -f $NHD/admin/predis.php ] && echo yes || echo no) ignored=$(jq -c '.ignored // empty' $D/NH7-release-$v.out 2>/dev/null | tail -1 | cut -c1-200)"; done
+(cd $SITES_DIR/$NH && docker-compose exec -T --user=www-data php sh -c "wp plugin install nginx-helper --version=$nhv --force") > $D/NH7-restore.log 2>&1; pos NH7-restored-$nhv $NH
+nhneg() { CANF=predis.php pcs $1 $NH; chk "$1: no positive verdict (can't confirm; the Predis exemption must not apply)" 'ok null|ok false|tool_error null' "$ST $SAFE"; info "$1: $(det $1) ignored=$(jq -c '.ignored // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-160)"; }
+PR=$NA/htdocs/wp-content/plugins/pcm-cache-tools; mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\nfunction pcm_cache_client() {\n\treturn class_exists( "Predis\\\\Client" ) ? "predis" : "phpredis";\n}\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8-other-plugin-mentions-predis; rm -rf $PR
+mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\n// Purges through Nginx-Helper when it is active.\nfunction pcm_purge() { do_action( "rt_nginx_helper_purge_all" ); }\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8b-other-plugin-mentions-nginx-helper; rm -rf $PR
+ln $NHD/nginx-helper.php /var/tmp/pcm-nh-hardlink; info "NH9 nlink $(stat -c %h $NHD/nginx-helper.php) (other name outside app/)"; nhneg NH9-nginx-helper-file-hardlinked; rm -f /var/tmp/pcm-nh-hardlink
+# NH10: redis in the CLI but not in php-fpm -m (simulated: a php-fpm wrapper that hides redis from -m only; the container is recreated by NH11)
+FPM=$(cd $SITES_DIR/$NH && docker-compose exec -T php sh -c 'command -v php-fpm' 2>/dev/null | tr -d '\r'); info "NH10 php-fpm at [$FPM]"
+if [ -n "$FPM" ] && (cd $SITES_DIR/$NH && docker-compose exec -T --user=root php sh -c "mv $FPM $FPM.real && printf '#!/bin/sh\nif [ \"\$1\" = -m ]; then $FPM.real -m | grep -vix redis; else exec $FPM.real \"\$@\"; fi\n' > $FPM && chmod 755 $FPM") > $D/NH10-wrap.log 2>&1; then
+  info "NH10 cli redis=$(cd $SITES_DIR/$NH && docker-compose exec -T php php -r 'echo extension_loaded("redis") ? "yes" : "no";' 2>&1 | tail -1) fpm -m redis=$(cd $SITES_DIR/$NH && docker-compose exec -T php sh -c 'php-fpm -m' 2>&1 | grep -cix redis)"
+  nhneg NH10-redis-missing-from-php-fpm; (cd $SITES_DIR/$NH && docker-compose exec -T --user=root php sh -c "mv $FPM.real $FPM") >> $D/NH10-wrap.log 2>&1
+else info "NH10: N/A, could not wrap php-fpm in the container ($(tail -2 $D/NH10-wrap.log 2>/dev/null | tr '\n' ' '))"; fi
+# NH11: an accepted extra mount (a clean plugin dir from the host via user-docker-compose)
+mkdir -p /srv/pcm-nh/plug; printf '<?php\n/*\nPlugin Name: PCM Mounted\n*/\nfunction pcm_m() { return 1; }\n' > /srv/pcm-nh/plug/pcm-mounted.php; chown -R 33:33 /srv/pcm-nh; mkdir -p $SITES_DIR/$NH/user-docker-compose
+printf 'services:\n  php:\n    volumes:\n      - /srv/pcm-nh/plug:/var/www/htdocs/wp-content/plugins/mounted-plug:ro\n' > $SITES_DIR/$NH/user-docker-compose/pcm.yml; run_ee en-$NH site enable $NH --force
+info "NH11 php mounts: $(docker inspect -f '{{json .Mounts}}' $(cname $NH)-php-1 2>&1 | jq -c '[.[] | select(.Destination|startswith("/var/www")) | .Destination]' 2>&1)"; nhneg NH11-accepted-extra-mount
+rm -rf $SITES_DIR/$NH/user-docker-compose; run_ee en2-$NH site enable $NH --force; pos NH12-after-negatives $NH "(stock, no mount, fresh container)"
 
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
