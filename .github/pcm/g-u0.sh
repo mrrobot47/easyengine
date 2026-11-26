@@ -32,13 +32,13 @@ preset; ln -s releases/1 $PH/previous; chown -h 33:33 $PH/previous; pos R1-previ
 preset; ln -s releases/1/vendor $PH/vendor; chown -h 33:33 $PH/vendor; neverpos R2-htdocs-vendor-link-into-old-release $P autoload.php
 # shape (a) only through a `current` link beside releases/ (#546 after 4094706c): releases moved under htdocs/sub with current -> sub/releases/2
 preset; mkdir -p $PH/sub; mv $PH/releases $PH/sub/releases; rm -f $PH/current; ln -s sub/releases/2 $PH/current; chown -h 33:33 $PH/current; chown -R 33:33 $PH/sub
-info "R3 layout: current -> $(readlink $PH/current), htdocs=[$(ls -A $PH | tr '\n' ' ')]"; neverpos R3-current-not-beside-releases $P autoload.php
+info "R3 layout: current -> $(readlink $PH/current), htdocs=[$(ls -A $PH | tr '\n' ' ')]"; neverpos R3-current-not-beside-releases $P autoload.php; chk "R3 pinned: not safe, old release scanned (canary found)" 'ok false [2-9][0-9]*' "$ST $SAFE $CAN"
 preset
 # the served link under another name: php site --public-dir=live/public, live -> releases/2, legacy code only in releases/1
 LP=pu-live.test; run_ee c-$LP site create $LP --type=php --public-dir=live/public; LA=$(A $LP); LH=$LA/htdocs; rec u0-live $LP > /dev/null
 mkdir -p $LH/releases $LH/live/public; mv $LH/live $LH/releases/2; ln -s releases/2 $LH/live; mkdir -p $LH/releases/1/vendor $LH/releases/2/vendor; plant $LH/releases/1/vendor/autoload.php
 printf '<?php\nreturn true;\n' > $LH/releases/2/vendor/autoload.php; printf '<?php\nrequire __DIR__ . "/../vendor/autoload.php";\necho "live";\n' > $LH/releases/2/public/index.php; chown -R 33:33 $LA; chown -h 33:33 $LH/live
-rec u0-live-cicd $LP > /dev/null; neverpos R4-served-link-named-live $LP autoload.php
+rec u0-live-cicd $LP > /dev/null; neverpos R4-served-link-named-live $LP autoload.php; chk "R4 pinned: not safe, old release scanned (canary found)" 'ok false [2-9][0-9]*' "$ST $SAFE $CAN"
 preset
 
 # V17 (#546 0f0081c1): a php site with a Python venv whose interpreter links out of the site's files (not code): positive
@@ -113,7 +113,7 @@ for v in 2.2.0 2.2.5 2.3.0 2.3.5 2.4.0 2.4.1; do (cd $SITES_DIR/$NH && docker-co
   got=$(grep -m1 -i '^ *\* *Version:' $NHD/nginx-helper.php | sed 's/.*: *//' | tr -d ' \r'); pos NH7-release-$v $NH "(nginx-helper $got, scoped OK)"
   info "NH7-$v: installed=$got predis=$([ -f $NHD/admin/predis.php ] && echo yes || echo no) ignored=$(jq -c '.ignored // empty' $D/NH7-release-$v.out 2>/dev/null | tail -1 | cut -c1-200)"; done
 (cd $SITES_DIR/$NH && docker-compose exec -T --user=www-data php sh -c "wp plugin install nginx-helper --version=$nhv --force") > $D/NH7-restore.log 2>&1; pos NH7-restored-$nhv $NH
-nhneg() { CANF=predis.php pcs $1 $NH; chk "$1: no positive verdict (can't confirm; the Predis exemption must not apply)" 'ok null|ok false|tool_error null' "$ST $SAFE"; info "$1: $(det $1) ignored=$(jq -c '.ignored // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-160)"; }
+nhneg() { CANF=predis.php pcs $1 $NH; chk "$1: not safe, the Predis exemption withdrawn (errors >= 1, ignored [], main 2026-11-26)" 'ok false [1-9][0-9]* \[\]' "$ST $SAFE $ERRS $(jq -c '.ignored // "absent"' $D/$1.out 2>/dev/null | tail -1)"; info "$1: $(det $1) ignored=$(jq -c '.ignored // empty' $D/$1.out 2>/dev/null | tail -1 | cut -c1-160)"; }
 PR=$NA/htdocs/wp-content/plugins/pcm-cache-tools; mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\nfunction pcm_cache_client() {\n\treturn class_exists( "Predis\\\\Client" ) ? "predis" : "phpredis";\n}\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8-other-plugin-mentions-predis; rm -rf $PR
 mkdir -p $PR; printf '<?php\n/*\nPlugin Name: PCM Cache Tools\n*/\n// Purges through Nginx-Helper when it is active.\nfunction pcm_purge() { do_action( "rt_nginx_helper_purge_all" ); }\n' > $PR/pcm-cache-tools.php; chown -R 33:33 $PR; nhneg NH8b-other-plugin-mentions-nginx-helper; rm -rf $PR
 ln $NHD/nginx-helper.php /var/tmp/pcm-nh-hardlink; info "NH9 nlink $(stat -c %h $NHD/nginx-helper.php) (other name outside app/)"; nhneg NH9-nginx-helper-file-hardlinked; rm -f /var/tmp/pcm-nh-hardlink
