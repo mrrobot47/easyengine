@@ -30,6 +30,11 @@ preset; mkdir -p $PH/shared; ln -s ../releases/1/vendor $PH/shared/vendor; chown
 # release pointers (#546 a1b8fb53): htdocs/previous -> releases/1 is a release pointer (shape a); htdocs/vendor -> releases/1/vendor is not
 preset; ln -s releases/1 $PH/previous; chown -h 33:33 $PH/previous; pos R1-previous-pointer-to-old-release $P "(legacy code only in releases/1)"; info "R1: $(det R1-previous-pointer-to-old-release)"
 preset; ln -s releases/1/vendor $PH/vendor; chown -h 33:33 $PH/vendor; neverpos R2-htdocs-vendor-link-into-old-release $P autoload.php
+# R5 (K7): auto_prepend_file pointing into old release 1 (.user.ini in the served dir; and a conf.d ini in the php container): never positive
+preset; plant $R1/prepend.php; printf 'auto_prepend_file = /var/www/htdocs/releases/1/prepend.php\n' > $R2/public/.user.ini; chown -R 33:33 $PH; info "R5 http: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $P" http://127.0.0.1/)"; neverpos R5-user-ini-prepend-into-old-release $P prepend.php
+preset; plant $R1/prepend.php; chown -R 33:33 $PH; (cd $SITES_DIR/$P && docker-compose exec -T --user=root php sh -c 'printf "auto_prepend_file = /var/www/htdocs/releases/1/prepend.php\n" > "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/zz-pcm-prepend.ini' && docker-compose restart php) > $D/R5b-ini.log 2>&1; sleep 3
+info "R5b fpm sees: $(cd $SITES_DIR/$P && docker-compose exec -T php php -r 'echo ini_get("auto_prepend_file");' 2>&1 | tail -1)"; neverpos R5b-conf-d-prepend-into-old-release $P prepend.php
+(cd $SITES_DIR/$P && docker-compose exec -T --user=root php sh -c 'rm -f "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/zz-pcm-prepend.ini' && docker-compose restart php) >> $D/R5b-ini.log 2>&1; sleep 3
 # shape (a) only through a `current` link beside releases/ (#546 after 4094706c): releases moved under htdocs/sub with current -> sub/releases/2
 preset; mkdir -p $PH/sub; mv $PH/releases $PH/sub/releases; rm -f $PH/current; ln -s sub/releases/2 $PH/current; chown -h 33:33 $PH/current; chown -R 33:33 $PH/sub
 info "R3 layout: current -> $(readlink $PH/current), htdocs=[$(ls -A $PH | tr '\n' ' ')]"; neverpos R3-current-not-beside-releases $P autoload.php; chk "R3 pinned: not safe, old release scanned (canary found)" 'ok false [2-9][0-9]*' "$ST $SAFE $CAN"
@@ -128,6 +133,23 @@ mkdir -p /srv/pcm-nh/plug; printf '<?php\n/*\nPlugin Name: PCM Mounted\n*/\nfunc
 printf 'services:\n  php:\n    volumes:\n      - /srv/pcm-nh/plug:/var/www/htdocs/wp-content/plugins/mounted-plug:ro\n' > $SITES_DIR/$NH/user-docker-compose/pcm.yml; run_ee en-$NH site enable $NH --force
 info "NH11 php mounts: $(docker inspect -f '{{json .Mounts}}' $(cname $NH)-php-1 2>&1 | jq -c '[.[] | select(.Destination|startswith("/var/www")) | .Destination]' 2>&1)"; nhneg NH11-accepted-extra-mount
 rm -rf $SITES_DIR/$NH/user-docker-compose; run_ee en2-$NH site enable $NH --force; pos NH12-after-negatives $NH "(stock, no mount, fresh container)"
+nwp() { (cd $SITES_DIR/$NH && docker-compose exec -T --user=www-data php sh -c "wp $1"); }
+nroot() { (cd $SITES_DIR/$NH && docker-compose exec -T --user=root php sh -c "$1"); }
+# NH13: WordPress's own nginx-helper es_ES language pack (wp-content/languages/plugins/nginx-helper-es_ES.l10n.php): positive
+nwp 'language core install es_ES --activate' > $D/NH13-lang.log 2>&1; nwp 'language plugin install nginx-helper es_ES' >> $D/NH13-lang.log 2>&1; L10N=$NA/htdocs/wp-content/languages/plugins/nginx-helper-es_ES.l10n.php
+if [ -f $L10N ]; then info "NH13 pack: $(ls -la $NA/htdocs/wp-content/languages/plugins/ | grep nginx-helper | awk '{print $5, $9}' | tr '\n' ' ') sha256=$(sha256sum < $L10N | cut -c1-16) locale=$(nwp 'option get WPLANG' 2>&1 | tail -1)"
+  pos NH13-nginx-helper-es_ES-pack $NH "(stock language pack, es_ES active)"; info "NH13 ignored=$(jq -c '.ignored // empty' $D/NH13-nginx-helper-es_ES-pack.out 2>/dev/null | tail -1 | cut -c1-200)"
+  cp -a $L10N /var/tmp/pu-l10n.php; sed -i "1s#^<?php#<?php require_once WP_PLUGIN_DIR . '/nginx-helper/admin/predis.php';#" $L10N; info "NH13b first line: $(head -c 120 $L10N)"; nhneg NH13b-pack-with-require; cp -a /var/tmp/pu-l10n.php $L10N
+else info "NH13: N/A, no nginx-helper-es_ES.l10n.php after the language install ($(tail -3 $D/NH13-lang.log | tr '\n' ' ' | cut -c1-250))"; fi
+nwp 'site switch-language en_US' > /dev/null 2>&1; nwp 'language core uninstall es_ES' > /dev/null 2>&1; rm -rf $NA/htdocs/wp-content/languages; pos NH13r-after-language-cells $NH
+# NH14: links into nginx-helper/admin from another plugin or a theme (K0/C1b, C1c, D4): not safe
+ZZ=$NA/htdocs/wp-content/plugins/zz; mkdir -p $ZZ; printf "<?php\n/*\nPlugin Name: ZZ\n*/\nrequire __DIR__ . '/p.php';\n" > $ZZ/zz.php; ln -s ../nginx-helper/admin/predis.php $ZZ/p.php; chown -R 33:33 $ZZ; chown -h 33:33 $ZZ/p.php; nhneg NH14-plugin-file-link-to-predis; rm -rf $ZZ
+mkdir -p $ZZ; printf "<?php\n/*\nPlugin Name: ZZ\n*/\nforeach ( glob( __DIR__ . '/lib/*.php' ) as \$f ) {\n\trequire_once \$f;\n}\n" > $ZZ/zz.php; ln -s ../nginx-helper/admin $ZZ/lib; chown -R 33:33 $ZZ; chown -h 33:33 $ZZ/lib; nhneg NH14b-plugin-dir-link-to-admin-glob; rm -rf $ZZ
+TT=$NA/htdocs/wp-content/themes/t; mkdir -p $TT; printf '/*\nTheme Name: T\n*/\n' > $TT/style.css; printf "<?php\nrequire __DIR__ . '/p.php';\n" > $TT/functions.php; printf '<?php\n' > $TT/index.php; ln -s ../../plugins/nginx-helper/admin/predis.php $TT/p.php; chown -R 33:33 $TT; chown -h 33:33 $TT/p.php; nhneg NH14c-theme-file-link-to-predis; rm -rf $TT
+# NH15: php-fpm configuration changed after the master started (an ini touched in the container's conf.d); the extra -d flag needs a changed command line: N/A
+info "NH15 -d variant: N/A, starting the fpm master with an extra -d needs a different container command (a user compose override, refused on its own)"
+nroot 'touch "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/*.ini' > $D/NH15-touch.log 2>&1; info "NH15 ini mtimes after the master: $(nroot 'ls -l --time-style=+%s "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/ | tail -3' 2>&1 | tr '\n' ' ' | cut -c1-250) master start $(nroot 'stat -c %Y /proc/1' 2>&1 | tail -1)"
+nhneg NH15-ini-touched-after-fpm-master; (cd $SITES_DIR/$NH && docker-compose restart php) > $D/NH15-restart.log 2>&1; sleep 3; pos NH15r-after-php-restart $NH "(fpm master restarted after the touch)"
 
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
