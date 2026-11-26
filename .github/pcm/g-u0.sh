@@ -147,6 +147,42 @@ info "NH15 -d variant: N/A, starting the fpm master with an extra -d needs a dif
 nroot 'touch "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/*.ini' > $D/NH15-touch.log 2>&1; info "NH15 ini mtimes after the master: $(nroot 'ls -l --time-style=+%s "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/ | tail -3' 2>&1 | tr '\n' ' ' | cut -c1-250) master start $(nroot 'stat -c %Y /proc/1' 2>&1 | tail -1)"
 pos NH15-ini-touched-after-fpm-master $NH "(positive: the config-time probe was dropped, covered by the R-PREDIS-TARGET residual, main 2026-11-26)"; (cd $SITES_DIR/$NH && docker-compose restart php) > $D/NH15-restart.log 2>&1; sleep 3; pos NH15r-after-php-restart $NH "(fpm master restarted after the touch)"
 
+# NH16-NH18 (#546 review of 376be47f): code reaching nginx-helper/admin/predis.php by paths the kernel and PHP resolve differently, or a bind mount; admin-tools
+nphp() { (cd $SITES_DIR/$NH && docker-compose exec -T --user=www-data php php -r "$1" 2>&1 | tail -1 | cut -c1-160); }
+ZZ=$NA/htdocs/wp-content/plugins/zz
+mkdir -p $ZZ; printf "<?php\n/*\nPlugin Name: ZZ\n*/\nrequire __DIR__ . '/p.css';\n" > $ZZ/zz.php; ln -s /var/www/htdocs/missing/../wp-content/plugins/nginx-helper/admin/predis.php $ZZ/p.css; chown -R 33:33 $ZZ; chown -h 33:33 $ZZ/p.css
+info "NH16 kernel: $(readlink -e $ZZ/p.css > /dev/null && echo resolves || echo dangling); php loads predis via p.css: $(nphp 'require "/var/www/htdocs/wp-content/plugins/zz/p.css"; echo class_exists("Predis\\Client", false) ? "yes" : "no";')"
+nhneg NH16-lexical-dotdot-link-to-predis; rm -rf $ZZ
+run_ee at-$NH admin-tools enable $NH; AT=$(cd $SITES_DIR/$NH && docker-compose exec -T php sh -c 'for d in /var/www/htdocs/ee-admin/*/; do [ -d "$d" ] && basename "$d" && break; done' 2>/dev/null | tr -d '\r' | head -1); info "NH17 admin-tools enable rc $RC; ee-admin subdir [$AT]"
+pos NH17-cache-site-with-admin-tools $NH "(stock --cache site, admin-tools enabled)"
+if [ -n "$AT" ]; then mkdir -p $ZZ; printf "<?php\n/*\nPlugin Name: ZZ\n*/\nrequire __DIR__ . '/p.css';\n" > $ZZ/zz.php; ln -s /var/www/htdocs/ee-admin/$AT/../../wp-content/plugins/nginx-helper/admin/predis.php $ZZ/p.css; chown -R 33:33 $ZZ; chown -h 33:33 $ZZ/p.css
+  info "NH16b kernel on the host: $(readlink -e $ZZ/p.css > /dev/null && echo resolves || echo dangling); php loads predis via p.css: $(nphp 'require "/var/www/htdocs/wp-content/plugins/zz/p.css"; echo class_exists("Predis\\Client", false) ? "yes" : "no";')"
+  nhneg NH16b-link-through-ee-admin-to-predis; rm -rf $ZZ
+else info "NH16b: N/A, no directory under ee-admin after admin-tools enable"; fi
+run_ee atd-$NH admin-tools disable $NH
+# NH18: predis.php bind-mounted onto another plugin's file on the host, seen by php after a restart
+mkdir -p $ZZ; printf "<?php\n/*\nPlugin Name: ZZ\n*/\nrequire __DIR__ . '/q.php';\n" > $ZZ/zz.php; : > $ZZ/q.php; chown -R 33:33 $ZZ
+if mount --bind $NHD/admin/predis.php $ZZ/q.php 2> $D/NH18-mount.err; then (cd $SITES_DIR/$NH && docker-compose restart php) > $D/NH18-restart.log 2>&1; sleep 3
+  info "NH18 host q.php inode $(stat -c %i $ZZ/q.php) = predis $(stat -c %i $NHD/admin/predis.php); container q.php size $(cd $SITES_DIR/$NH && docker-compose exec -T php stat -c %s /var/www/htdocs/wp-content/plugins/zz/q.php 2>&1 | tail -1); php loads predis via q.php: $(nphp 'require "/var/www/htdocs/wp-content/plugins/zz/q.php"; echo class_exists("Predis\\Client", false) ? "yes" : "no";')"
+  nhneg NH18-bind-mount-predis-onto-plugin-file; umount $ZZ/q.php; (cd $SITES_DIR/$NH && docker-compose restart php) >> $D/NH18-restart.log 2>&1; sleep 3
+else info "NH18: N/A, mount --bind failed on the runner: $(head -c 200 $D/NH18-mount.err)"; fi
+rm -rf $ZZ; pos NH18r-after-unmount $NH
+
+# P20-P22 (#546 review of 376be47f): auto_prepend_file forms on php sites
+PI=pu-ini.test; run_ee c-$PI site create $PI --type=php; IA=$(A $PI); IH=$IA/htdocs; printf '<?php\necho "hi";\n' > $IH/index.php; chown -R 33:33 $IA
+plant $IH/x/canary.php; printf '[PHP] auto_prepend_file=/var/www/htdocs/x/canary.php\n' > $IH/.user.ini; chown -R 33:33 $IH; neverpos P20-user-ini-section-and-prepend-one-line $PI canary.php; rm -f $IH/.user.ini
+(cd $SITES_DIR/$PI && docker-compose exec -T --user=root php sh -c 'printf "[PHP] auto_prepend_file=/var/www/htdocs/x/canary.php\n" > "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/zz-pcm-p20.ini' && docker-compose restart php) > $D/P20b.log 2>&1; sleep 3
+info "P20b fpm sees: $(cd $SITES_DIR/$PI && docker-compose exec -T php php -r 'echo ini_get("auto_prepend_file");' 2>&1 | tail -1)"; neverpos P20b-conf-d-section-and-prepend-one-line $PI canary.php
+(cd $SITES_DIR/$PI && docker-compose exec -T --user=root php sh -c 'rm -f "${PHP_INI_DIR:-/usr/local/etc/php}"/conf.d/zz-pcm-p20.ini' && docker-compose restart php) >> $D/P20b.log 2>&1; sleep 3; rm -rf $IH/x
+mkdir -p $IA/outside-dir; plant $IA/outside-dir/c.php; printf '<?php\necho "sub";\n' > $IA/outside-dir/index.php; printf 'auto_prepend_file=/var/www/outside-dir/c.php\n' > $IA/outside-dir/.user.ini; ln -s ../outside-dir $IH/sub; chown -R 33:33 $IA; chown -h 33:33 $IH/sub
+info "P21 http sub/: $(curl -s -o /dev/null -w '%{http_code}' -H "Host: $PI" http://127.0.0.1/sub/)"; neverpos P21-dir-link-out-with-user-ini-prepend $PI c.php; rm -f $IH/sub; rm -rf $IA/outside-dir
+# P22 = review fixture fx/r6: Deployer php site, every release has a .user.ini prepending its own boot.php; legacy code only in old release 2
+PD=pu-dep.test; run_ee c-$PD site create $PD --type=php --public-dir=current/public; DA=$(A $PD); DH=$DA/htdocs
+mkdir -p $DH/releases; mv $DH/current $DH/releases/3; ln -s releases/3 $DH/current; mkdir -p $DH/releases/3/public $DH/releases/2/public
+printf '<?php echo 1;\n' > $DH/releases/3/public/index.php; printf '<?php echo 1;\n' > $DH/releases/3/boot.php; printf '<?php echo 1;\n' > $DH/releases/2/public/index.php; plant $DH/releases/2/boot.php
+echo 'auto_prepend_file=/var/www/htdocs/releases/3/boot.php' > $DH/releases/3/public/.user.ini; echo 'auto_prepend_file=/var/www/htdocs/releases/2/boot.php' > $DH/releases/2/public/.user.ini; chown -R 33:33 $DA; chown -h 33:33 $DH/current
+rec u0-dep $PD > /dev/null; info "P22 http: $(curl -s -H "Host: $PD" http://127.0.0.1/ | head -c 40)"; pos P22-deployer-inert-old-release-user-ini $PD "(live release prepend scanned and clean; old release 2 inert)"; info "P22: $(det P22-deployer-inert-old-release-user-ini) checked=$(jq -c .checked $D/P22-deployer-inert-old-release-user-ini.out 2>/dev/null | tail -1)"
+
 # U23: squizlabs php_codesniffer test fixture (tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc, PHPCSStandards 3.x, sha256 d15e4ded) in a plugin
 wreset; G=$WH/wp-content/plugins/pcm-phpcs; clean $G/pcm-phpcs.php; mkdir -p $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP; echo "$DQS_B64" | base64 -d > $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc; chown -R 33:33 $G
 info "U23 fixture sha256 $(sha256sum < $G/vendor/squizlabs/php_codesniffer/tests/Core/Tokenizers/PHP/DoubleQuotedStringTest.inc | cut -c1-16)"
